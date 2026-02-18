@@ -179,8 +179,8 @@ const AdminView = ({ onBack, clickedLocation }) => {
                 .select()
 
             if (error) {
-                console.error('Update error:', error)
-                alert('保存に失敗しました: ' + error.message)
+                console.error('Admin update error object:', error)
+                alert(`保存に失敗しました: ${error.message} (Code: ${error.code})`)
             } else {
                 console.log('Update success:', data)
                 setIsEditOpen(false)
@@ -188,8 +188,8 @@ const AdminView = ({ onBack, clickedLocation }) => {
                 fetchData()
             }
         } catch (err) {
-            console.error('Unexpected update error:', err)
-            alert('予期せぬエラーが発生しました')
+            console.error('Fatal admin update error:', err)
+            alert(`予期せぬエラーが発生しました: ${err.message}`)
         }
     }
 

@@ -150,19 +150,25 @@ function App() {
             }
         })
 
-        const { error } = await supabase
-            .from('stores')
-            .insert([{
-                ...cleanData,
-                status: 'pending',
-                source_type: 'community'
-            }])
+        try {
+            const { error } = await supabase
+                .from('stores')
+                .insert([{
+                    ...cleanData,
+                    status: 'pending',
+                    source_type: 'community'
+                }])
 
-        if (error) {
-            alert('送信に失敗しました: ' + error.message)
-        } else {
-            alert('投稿ありがとうございます。管理者の承認をお待ちください。')
-            setIsFormOpen(false)
+            if (error) {
+                console.error('Submission error object:', error)
+                alert(`送信に失敗しました: ${error.message} (Code: ${error.code})`)
+            } else {
+                alert('投稿ありがとうございます。管理者の承認をお待ちください。')
+                setIsFormOpen(false)
+            }
+        } catch (err) {
+            console.error('Fatal submission error:', err)
+            alert(`予期せぬエラーが発生しました: ${err.message}`)
         }
     }
 

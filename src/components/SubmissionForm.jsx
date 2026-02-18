@@ -14,7 +14,7 @@ const PREFECTURES = [
 const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialData }) => {
     const [formData, setFormData] = useState({
         name: '',
-        postalCode: '',
+        postal_code: '',
         prefecture: '',
         city_town: '',
         address_line1: '',
@@ -88,7 +88,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 setFormData({
                     ...initialData,
                     name: initialData.name || '',
-                    postalCode: initialData.postal_code || '',
+                    postal_code: initialData.postal_code || '',
                     prefecture: prefecture,
                     city_town: cityTown,
                     address_line1: streetAddr,
@@ -113,7 +113,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 // Reset form
                 setFormData({
                     name: '',
-                    postalCode: '',
+                    postal_code: '',
                     prefecture: '',
                     city_town: '',
                     address_line1: '',
@@ -143,7 +143,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
     // Auto-fill address from Postal Code
     const handlePostalCodeChange = async (e) => {
         const value = e.target.value
-        setFormData(prev => ({ ...prev, postalCode: value }))
+        setFormData(prev => ({ ...prev, postal_code: value }))
 
         // Trigger search when 7 digits are entered
         if (value.replace(/-/g, '').length === 7) {
@@ -166,7 +166,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
     }
 
     const handleGeocode = async () => {
-        if (!formData.prefecture && !formData.postalCode) {
+        if (!formData.prefecture && !formData.postal_code) {
             alert('郵便番号、または都道府県と住所を入力してください')
             return
         }
@@ -192,7 +192,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const cityTown = formData.city_town || ''
         const street = formData.address_line1 || ''
         const address = `${cityTown} ${street}`.trim() // Use space between city and street
-        const postalCode = formData.postalCode
+        const postal_code = formData.postal_code
 
         const toHalfWidth = (str) => {
             return str.replace(/[！-～]/g, (s) => {
@@ -217,8 +217,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             cleaned = cleaned.replace(new RegExp(prefecture, 'g'), '')
             cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
 
-            if (postalCode && cleaned.includes(postalCode)) {
-                cleaned = cleaned.replace(postalCode, '')
+            if (postal_code && cleaned.includes(postal_code)) {
+                cleaned = cleaned.replace(postal_code, '')
             }
             if (address.match(/[0-9]{3}-?[0-9]{4}/)) {
                 cleaned = cleaned.replace(/[0-9]{3}-?[0-9]{4}/, '')
@@ -240,7 +240,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             const wordParts = cleaned.split(/[\s,，]+/).filter(w =>
                 w &&
                 !w.includes(coreAddress) &&
-                w !== postalCode &&
+                w !== postal_code &&
                 !w.match(/^[0-9-]+$/)
             )
 
@@ -254,8 +254,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 queries.push(`${prefecture} ${wordParts.reverse().join(' ')} ${coreAddress}`)
             }
 
-            if (postalCode && coreAddress) {
-                queries.push(`${postalCode} ${coreAddress}`)
+            if (postal_code && coreAddress) {
+                queries.push(`${postal_code} ${coreAddress}`)
             }
 
             if (prefecture && coreAddress && wordParts.length === 0) {
@@ -266,8 +266,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 queries.push(`${prefecture} ${cleaned}`)
             }
 
-            if (postalCode) {
-                queries.push(postalCode)
+            if (postal_code) {
+                queries.push(postal_code)
             }
 
             const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
@@ -362,8 +362,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                             <div>
                                 <label className="text-xs text-gold/60 block mb-1.5">郵便番号</label>
                                 <input
-                                    name="postalCode"
-                                    value={formData.postalCode}
+                                    name="postal_code"
+                                    value={formData.postal_code}
                                     onChange={handlePostalCodeChange}
                                     placeholder="例: 101-0021 (住所が自動入力されます)"
                                     className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
