@@ -408,7 +408,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     name="postal_code"
                                     value={formData.postal_code}
                                     onChange={handlePostalCodeChange}
-                                    placeholder="例: 101-0021 (住所が自動入力されます)"
+                                    placeholder="例: 123-4567 (住所が自動入力されます)"
                                     className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
                                 />
                             </div>
@@ -446,7 +446,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                         name="address_line1"
                                         value={formData.address_line1}
                                         onChange={handleChange}
-                                        placeholder="例: 1-6-3"
+                                        placeholder="例: 1-2-3"
                                         className="w-full h-11 rounded-lg border border-white/10 bg-white/5 pl-4 pr-12 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
                                     />
                                     <button
@@ -474,7 +474,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     name="address_line2"
                                     value={formData.address_line2}
                                     onChange={handleChange}
-                                    placeholder="例: アキバプレイス 4F"
+                                    placeholder="例: FABビル 1F"
                                     className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
                                 />
                                 <p className="text-[10px] text-neutral-500 mt-1">
