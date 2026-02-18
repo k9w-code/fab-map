@@ -1,17 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, Crosshair, Settings } from 'lucide-react'
+import { Search, Plus, Crosshair, Settings, Navigation2 } from 'lucide-react'
 import Map from './components/Map'
 import StoreBottomSheet from './components/StoreBottomSheet'
 import SubmissionForm from './components/SubmissionForm'
 import AdminView from './components/AdminView'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
+import { calculateDistance } from './lib/utils'
 
 const PREFECTURES = [
-    "すべて", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-    "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-    "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
-    "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
-    "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+    // ... (lines 10-17)
     "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
     "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
 ]
@@ -27,8 +23,10 @@ function App() {
     const [isAdminView, setIsAdminView] = useState(false)
     const [userLocation, setUserLocation] = useState(null)
     const [clickedLocation, setClickedLocation] = useState(null)
+    const [mapRef, setMapRef] = useState(null)
 
     // Admin hash routing
+    // ... (lines 32-39)
     useEffect(() => {
         const handleHashChange = () => {
             setIsAdminView(window.location.hash === '#admin')
@@ -39,6 +37,7 @@ function App() {
     }, [])
 
     // Fetch stores from Supabase
+    // ... (lines 42-62)
     const fetchStores = useCallback(async () => {
         if (!isSupabaseConfigured || !supabase) {
             console.warn('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
@@ -77,9 +76,11 @@ function App() {
         }
     }, [])
 
-    // Filter logic
+    // Filter and Sort logic
     useEffect(() => {
-        let result = stores
+        let result = [...stores]
+
+        // 1. Filter
         if (searchTerm) {
             result = result.filter(s =>
                 s.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -88,14 +89,31 @@ function App() {
         if (selectedPrefecture !== 'すべて') {
             result = result.filter(s => s.prefecture === selectedPrefecture)
         }
+
+        // 2. Add distance and Sort
+        if (userLocation) {
+            const [uLng, uLat] = userLocation
+            result = result.map(s => ({
+                ...s,
+                distance: calculateDistance(uLat, uLng, s.latitude, s.longitude)
+            }))
+            result.sort((a, b) => a.distance - b.distance)
+        }
+
         setFilteredStores(result)
-    }, [searchTerm, selectedPrefecture, stores])
+    }, [searchTerm, selectedPrefecture, stores, userLocation])
 
     // Handlers
     const handleMarkerClick = useCallback((store) => {
         setSelectedStore(store)
         setIsSheetOpen(true)
     }, [])
+
+    const handleJumpToStore = (store) => {
+        setSelectedStore(store)
+        setUserLocation([store.longitude, store.latitude]) // Map will react to center change
+        setIsSheetOpen(true)
+    }
 
     const handleMapClick = useCallback((lngLat) => {
         setClickedLocation(lngLat)
@@ -111,6 +129,7 @@ function App() {
     }
 
     const handleSubmission = async (formData) => {
+        // ... (lines 114-132)
         if (!isSupabaseConfigured || !supabase) {
             alert('データベースが設定されていません。管理者にお問い合わせください。')
             return
@@ -137,9 +156,9 @@ function App() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background">
-            {/* ===== HEADER (fixed height, pushes map down) ===== */}
-            <header className="shrink-0 bg-card/90 backdrop-blur-lg border-b border-gold/20 px-4 py-3 z-20">
+        <div className="flex flex-col h-full bg-background overflow-hidden">
+            {/* ===== HEADER ===== */}
+            <header className="shrink-0 bg-card/90 backdrop-blur-lg border-b border-gold/20 px-4 py-3 z-30">
                 {/* Title row */}
                 <div className="flex items-center justify-between mb-2">
                     <h1 className="text-lg font-serif text-gold tracking-widest drop-shadow-[0_0_8px_rgba(212,175,55,0.4)]">
@@ -177,7 +196,7 @@ function App() {
                     )}
                 </div>
 
-                {/* Prefecture filter - simple dropdown only */}
+                {/* Prefecture filter */}
                 <div className="flex items-center gap-2">
                     <select
                         className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gold-light outline-none focus:border-gold/40 transition-colors"
@@ -190,7 +209,43 @@ function App() {
                 </div>
             </header>
 
-            {/* ===== MAP (fills remaining space) ===== */}
+            {/* ===== SEARCH RESULTS / PREFECTURE LIST (Horizontal scroll) ===== */}
+            {(searchTerm || selectedPrefecture !== 'すべて') && filteredStores.length > 0 && (
+                <div className="shrink-0 bg-background/50 backdrop-blur-sm border-b border-gold/10 py-3 z-20">
+                    <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar">
+                        {filteredStores.map(store => (
+                            <button
+                                key={store.id}
+                                onClick={() => handleJumpToStore(store)}
+                                className="shrink-0 w-48 p-3 rounded-xl bg-card border border-gold/20 flex flex-col items-start gap-1 active:scale-95 transition-all text-left group hover:border-gold/50"
+                            >
+                                <span className="text-xs font-bold text-gold truncate w-full group-hover:text-gold-light">
+                                    {store.name}
+                                </span>
+                                <div className="flex items-center gap-1.5 w-full">
+                                    <span className="text-[10px] text-neutral-400 truncate flex-1">
+                                        {store.prefecture} {store.address?.split(' ')[0]}
+                                    </span>
+                                    {store.distance !== undefined && (
+                                        <span className="text-[10px] text-gold/60 font-mono whitespace-nowrap">
+                                            {store.distance < 1 ?
+                                                `${(store.distance * 1000).toFixed(0)}m` :
+                                                `${store.distance.toFixed(1)}km`
+                                            }
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="mt-1 flex items-center gap-1 text-[9px] text-gold/40">
+                                    <Navigation2 size={10} />
+                                    <span>地図で表示</span>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* ===== MAP ===== */}
             <main className="flex-1 relative min-h-0">
                 <Map
                     center={userLocation}
@@ -227,7 +282,7 @@ function App() {
                 }}
             />
 
-            {/* ===== SUBMISSION FORM (Full Screen Modal) ===== */}
+            {/* ===== SUBMISSION FORM ===== */}
             <SubmissionForm
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
