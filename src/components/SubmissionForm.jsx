@@ -180,35 +180,44 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
             // 4. Construct Queries
 
-            // Priority 0: Prefecture + Core Address (Specific!)
-            // e.g. "東京都 1-6-3" -> Should hit Sotokanda 1-6-3
-            if (prefecture && coreAddress) {
-                queries.push(`${prefecture} ${coreAddress}`)
+            // Priority 0: Reordered Standard Japanese Address
+            // Detected: "1-6-3 Sotokanda Chiyoda-ku" -> "Tokyo Chiyoda-ku Sotokanda 1-6-3"
+            // Extract meaningful words (Kanji/Kana/Letters) that are NOT the core address
+            const wordParts = cleaned.split(/[\s,，]+/).filter(w =>
+                w &&
+                !w.includes(coreAddress) &&
+                w !== postalCode &&
+                !w.match(/^[0-9-]+$/) // Not just numbers
+            )
+
+            // If we have words (Town/Ward) and a Core Address, put words FIRST
+            if (prefecture && coreAddress && wordParts.length > 0) {
+                // Trying: Prefecture + Words(joined) + CoreAddress
+                // e.g. "東京都" + "外神田 千代田区" + "1-6-3"
+                // Ideally reverse the words if they look inverted? "の外神田 千代田区" -> "千代田区 外神田"?
+                // Let's just try the order found in 'cleaned', but moved BEFORE the number.
+                // Also try reversing the words just in case "Sotokanda Chiyoda-ku" -> "Chiyoda-ku Sotokanda"
+
+                queries.push(`${prefecture} ${wordParts.join(' ')} ${coreAddress}`)
+                queries.push(`${prefecture} ${wordParts.reverse().join(' ')} ${coreAddress}`)
             }
 
             // Priority 1: Postal Code + Core Address (The content-match king)
-            // e.g. "101-0021 1-6-3" -> Very high chance of success
+            // e.g. "101-0021 1-6-3" -> Very high chance of success IF zip maps to town
             if (postalCode && coreAddress) {
                 queries.push(`${postalCode} ${coreAddress}`)
             }
 
-            // Priority 2: Prefecture + Cleaned Address (Standard)
-            // We need the town name (Sotokanda). 'cleaned' might still have it.
+            // Priority 2: Prefecture + Core Address (Specific, but might fail without town)
+            // e.g. "東京都 1-6-3" -> Should hit if unique, but "1-6-3" is common. 
+            // Only use if we have NO other words.
+            if (prefecture && coreAddress && wordParts.length === 0) {
+                queries.push(`${prefecture} ${coreAddress}`)
+            }
+
+            // Priority 3: Prefecture + Cleaned Address (As is)
             if (prefecture && cleaned) {
                 queries.push(`${prefecture} ${cleaned}`)
-            }
-
-            // Priority 3: Reverse Order Handling (Google Maps style)
-            if (formData.address.includes(',')) {
-                const parts = normalizedAddress.split(',').map(p => p.trim())
-                // Reversed parts, excluding prefecture/Japan
-                const reverseParts = parts.filter(p => !p.includes(prefecture) && !p.includes('Japan') && !p.includes('日本')).reverse()
-                queries.push(`${prefecture} ${reverseParts.join(' ')}`)
-            }
-
-            // Priority 4: Postal Code + Cleaned Address
-            if (postalCode && cleaned) {
-                queries.push(`${postalCode} ${cleaned}`)
             }
 
             // Priority 5: Just Postal Code (Fallback)
