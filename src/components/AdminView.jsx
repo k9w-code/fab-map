@@ -13,6 +13,7 @@ const AdminView = ({ onBack }) => {
     const [password, setPassword] = useState('')
     const [editingStore, setEditingStore] = useState(null)
     const [isEditOpen, setIsEditOpen] = useState(false)
+    const [itemToDelete, setItemToDelete] = useState(null)
 
     // Check password on mount / when it changes
     useEffect(() => {
@@ -69,33 +70,29 @@ const AdminView = ({ onBack }) => {
         }
     }
 
-    const handleDelete = async (id) => {
-        console.log('Delete button clicked for ID:', id)
-        const itemType = activeTab === 'approved' ? '公開済み' : '承認待ち'
+    const handleDeleteClick = (store) => {
+        console.log('Delete button clicked for:', store.name)
+        setItemToDelete(store)
+    }
 
-        // Simple confirmation before proceeding to show we received the click
-        if (!window.confirm(`【確認】本当にこの${itemType}データを削除しますか？`)) {
-            return
-        }
+    const handleConfirmDelete = async () => {
+        if (!itemToDelete) return
 
+        const id = itemToDelete.id
         setIsLoading(true)
         try {
-            const { data, error, count } = await supabase
+            const { data, error } = await supabase
                 .from('stores')
                 .delete()
                 .eq('id', id)
-                .select() // Add select to verify if it was actually deleted
+                .select()
 
             if (error) {
                 console.error('Delete error details:', error)
                 alert('削除に失敗しました（DBエラー）: ' + error.message)
-            } else if (!data || data.length === 0) {
-                alert('削除対象が見つかりませんでした。すでに削除されている可能性があります。')
-                fetchData() // Refresh list
             } else {
-                alert('削除が完了しました')
                 setStores(prev => prev.filter(s => s.id !== id))
-                await fetchData()
+                setItemToDelete(null)
             }
         } catch (err) {
             console.error('Fatal delete error:', err)
@@ -265,10 +262,7 @@ const AdminView = ({ onBack }) => {
                                             <Edit2 size={18} className="pointer-events-none" />
                                         </button>
                                         <button
-                                            onClick={() => {
-                                                console.log('Delete button native click for ID:', store.id);
-                                                handleDelete(store.id);
-                                            }}
+                                            onClick={() => handleDeleteClick(store)}
                                             className="relative flex-1 sm:w-12 h-10 rounded-lg bg-red-900/40 hover:bg-red-900 text-red-100 flex items-center justify-center transition-colors cursor-pointer z-10 border border-red-500/30"
                                             title="削除する"
                                         >
@@ -281,6 +275,32 @@ const AdminView = ({ onBack }) => {
                     </div>
                 )}
             </div>
+
+            {/* Deletion Confirmation Modal */}
+            {itemToDelete && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <Card className="w-full max-w-sm p-6 border-gold/30 bg-card shadow-2xl animate-fade-in">
+                        <h3 className="text-xl font-serif text-gold mb-2">データを削除しますか？</h3>
+                        <p className="text-sm text-neutral-400 mb-6">
+                            「<span className="text-gold-light">{itemToDelete.name}</span>」のデータを完全に削除します。この操作は取り消せません。
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setItemToDelete(null)}
+                                className="flex-1 h-12 rounded-xl bg-white/5 border border-white/10 text-gold-light hover:bg-white/10 transition-colors"
+                            >
+                                キャンセル
+                            </button>
+                            <button
+                                onClick={handleConfirmDelete}
+                                className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-colors shadow-lg shadow-red-900/20"
+                            >
+                                削除する
+                            </button>
+                        </div>
+                    </Card>
+                </div>
+            )}
 
             {/* Editing Form Modal */}
             <SubmissionForm

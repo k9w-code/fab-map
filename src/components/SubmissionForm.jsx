@@ -75,7 +75,21 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
 
         setIsGeocoding(true)
-        const query = `${formData.prefecture}${formData.address}`
+
+        // Clean address for better search results
+        // Remove building names, floors, room numbers which confuse Nominatim
+        let cleanedAddress = formData.address
+            .replace(/[0-9]+F/gi, '') // 3F, 4f
+            .replace(/[０-９]+階/g, '') // ３階
+            .replace(/[0-9]+階/g, '') // 3階
+            .replace(/ビル.*$/g, '') // ビル and anything after
+            .replace(/[0-9]+号室/g, '') // 101号室
+            .replace(/[\(（].*[\)）]/g, '') // text in brackets
+            .trim()
+
+        const query = `${formData.prefecture}${cleanedAddress}`
+        console.log('Geocoding query:', query)
+
         try {
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
@@ -95,7 +109,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     longitude: parseFloat(lon)
                 }))
             } else {
-                alert('住所から場所を特定できませんでした。住所を短くするか、手動でピンの位置を設定してください。')
+                // Try a simpler search if the first one fails
+                alert('住所の特定が難しいため、番地までで再試行するか、手動でピンを設定してください。')
             }
         } catch (error) {
             console.error('Geocoding error:', error)
