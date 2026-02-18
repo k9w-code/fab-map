@@ -170,7 +170,7 @@ const AdminView = ({ onBack }) => {
     }
 
     return (
-        <div className="min-h-screen bg-background p-4 pb-20 sm:p-6 sm:pt-12">
+        <div className="h-screen overflow-y-auto bg-background p-4 pb-24 sm:p-6 sm:pt-12">
             <div className="max-w-4xl mx-auto">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
@@ -255,20 +255,24 @@ const AdminView = ({ onBack }) => {
                                         )}
                                         <button
                                             onClick={() => {
+                                                console.log('Edit clicked', store.id)
                                                 setEditingStore(store)
                                                 setIsEditOpen(true)
                                             }}
-                                            className="flex-1 sm:w-12 h-10 rounded-lg bg-white/10 hover:bg-white/20 text-gold flex items-center justify-center transition-colors"
+                                            className="relative flex-1 sm:w-12 h-10 rounded-lg bg-white/10 hover:bg-white/20 text-gold flex items-center justify-center transition-colors cursor-pointer z-10"
                                             title="編集する"
                                         >
-                                            <Edit2 size={18} />
+                                            <Edit2 size={18} className="pointer-events-none" />
                                         </button>
                                         <button
-                                            onClick={() => handleDelete(store.id)}
-                                            className="flex-1 sm:w-12 h-10 rounded-lg bg-red-900/30 hover:bg-red-900 text-red-400 flex items-center justify-center transition-colors"
+                                            onClick={() => {
+                                                console.log('Delete button native click for ID:', store.id);
+                                                handleDelete(store.id);
+                                            }}
+                                            className="relative flex-1 sm:w-12 h-10 rounded-lg bg-red-900/40 hover:bg-red-900 text-red-100 flex items-center justify-center transition-colors cursor-pointer z-10 border border-red-500/30"
                                             title="削除する"
                                         >
-                                            <Trash2 size={18} />
+                                            <Trash2 size={18} className="pointer-events-none" />
                                         </button>
                                     </div>
                                 </div>
