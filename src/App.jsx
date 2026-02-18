@@ -135,10 +135,24 @@ function App() {
             alert('データベースが設定されていません。管理者にお問い合わせください。')
             return
         }
+
+        // Filter out non-existent columns
+        const validColumns = [
+            'name', 'prefecture', 'address', 'latitude', 'longitude',
+            'fab_available', 'armory_available', 'format_text', 'notes'
+        ]
+
+        const cleanData = {}
+        validColumns.forEach(col => {
+            if (formData[col] !== undefined) {
+                cleanData[col] = formData[col]
+            }
+        })
+
         const { error } = await supabase
             .from('stores')
             .insert([{
-                ...formData,
+                ...cleanData,
                 status: 'pending',
                 source_type: 'community'
             }])

@@ -85,9 +85,23 @@ const AdminView = ({ onBack }) => {
     }
 
     const handleEditSave = async (formData) => {
+        // Filter out system columns and non-existent columns
+        const validColumns = [
+            'name', 'prefecture', 'address', 'latitude', 'longitude',
+            'fab_available', 'armory_available', 'format_text', 'notes',
+            'status', 'source_type'
+        ]
+
+        const cleanData = {}
+        validColumns.forEach(col => {
+            if (formData[col] !== undefined) {
+                cleanData[col] = formData[col]
+            }
+        })
+
         const { error } = await supabase
             .from('stores')
-            .update(formData)
+            .update(cleanData)
             .eq('id', editingStore.id)
 
         if (error) {

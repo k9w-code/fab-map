@@ -21,15 +21,13 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         fab_available: false,
         armory_available: false,
         format_text: '',
-        notes: '',
-        author: ''
+        notes: ''
     })
 
     useEffect(() => {
         if (initialData) {
             setFormData({
                 ...initialData,
-                // Ensure default values for undefined fields
                 name: initialData.name || '',
                 prefecture: initialData.prefecture || '',
                 address: initialData.address || '',
@@ -38,8 +36,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 fab_available: !!initialData.fab_available,
                 armory_available: !!initialData.armory_available,
                 format_text: initialData.format_text || '',
-                notes: initialData.notes || '',
-                author: initialData.author || ''
+                notes: initialData.notes || ''
             })
         } else if (initialLocation) {
             setFormData(prev => ({
@@ -48,7 +45,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 longitude: initialLocation.lng
             }))
         } else if (!isOpen) {
-            // Reset form when closing and not editing
             setFormData({
                 name: '',
                 prefecture: '',
@@ -58,8 +54,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 fab_available: false,
                 armory_available: false,
                 format_text: '',
-                notes: '',
-                author: ''
+                notes: ''
             })
         }
     }, [initialData, initialLocation, isOpen])
@@ -86,7 +81,9 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             <div className="flex flex-col h-full">
                 {/* Top bar */}
                 <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-gold/20">
-                    <h2 className="text-lg font-serif text-gold">店舗情報を投稿</h2>
+                    <h2 className="text-lg font-serif text-gold">
+                        {initialData ? '店舗情報を編集' : '店舗情報を投稿'}
+                    </h2>
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-white/10 rounded-full transition-colors"
@@ -197,18 +194,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                 className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors resize-none"
                             />
                         </div>
-
-                        {/* 投稿者名 */}
-                        <div>
-                            <label className="text-xs text-gold/60 block mb-1.5">投稿者名（任意）</label>
-                            <input
-                                name="author"
-                                value={formData.author}
-                                onChange={handleChange}
-                                placeholder="ニックネーム"
-                                className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
-                            />
-                        </div>
                     </form>
                 </div>
 
@@ -220,7 +205,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                         className="w-full h-12 rounded-xl bg-gold text-black font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                     >
                         <Save size={18} />
-                        審査リクエストを送信
+                        {initialData ? '変更を保存する' : '審査リクエストを送信'}
                     </button>
                 </div>
             </div>
