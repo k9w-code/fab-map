@@ -11,7 +11,7 @@ const PREFECTURES = [
     "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
 ]
 
-const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation }) => {
+const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialData }) => {
     const [formData, setFormData] = useState({
         name: '',
         prefecture: '',
@@ -26,14 +26,43 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation }) => {
     })
 
     useEffect(() => {
-        if (initialLocation) {
+        if (initialData) {
+            setFormData({
+                ...initialData,
+                // Ensure default values for undefined fields
+                name: initialData.name || '',
+                prefecture: initialData.prefecture || '',
+                address: initialData.address || '',
+                latitude: initialData.latitude || 35.681,
+                longitude: initialData.longitude || 139.767,
+                fab_available: !!initialData.fab_available,
+                armory_available: !!initialData.armory_available,
+                format_text: initialData.format_text || '',
+                notes: initialData.notes || '',
+                author: initialData.author || ''
+            })
+        } else if (initialLocation) {
             setFormData(prev => ({
                 ...prev,
                 latitude: initialLocation.lat,
                 longitude: initialLocation.lng
             }))
+        } else if (!isOpen) {
+            // Reset form when closing and not editing
+            setFormData({
+                name: '',
+                prefecture: '',
+                address: '',
+                latitude: 35.681,
+                longitude: 139.767,
+                fab_available: false,
+                armory_available: false,
+                format_text: '',
+                notes: '',
+                author: ''
+            })
         }
-    }, [initialLocation])
+    }, [initialData, initialLocation, isOpen])
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target
