@@ -14,6 +14,7 @@ const PREFECTURES = [
 const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialData }) => {
     const [formData, setFormData] = useState({
         name: '',
+        postalCode: '',
         prefecture: '',
         address: '',
         latitude: 35.681,
@@ -30,6 +31,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             setFormData({
                 ...initialData,
                 name: initialData.name || '',
+                postalCode: initialData.postal_code || '', // Support existing data if any
                 prefecture: initialData.prefecture || '',
                 address: initialData.address || '',
                 latitude: initialData.latitude || 35.681,
@@ -46,8 +48,10 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 longitude: initialLocation.lng
             }))
         } else if (!isOpen) {
+            // Reset form
             setFormData({
                 name: '',
+                postalCode: '',
                 prefecture: '',
                 address: '',
                 latitude: 35.681,
@@ -68,9 +72,33 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }))
     }
 
+    // Auto-fill address from Postal Code
+    const handlePostalCodeChange = async (e) => {
+        const value = e.target.value
+        setFormData(prev => ({ ...prev, postalCode: value }))
+
+        // Trigger search when 7 digits are entered
+        if (value.replace(/-/g, '').length === 7) {
+            try {
+                const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${value}`)
+                const data = await response.json()
+                if (data.results && data.results[0]) {
+                    const { address1, address2, address3 } = data.results[0]
+                    setFormData(prev => ({
+                        ...prev,
+                        prefecture: address1,
+                        address: `${address2}${address3}`
+                    }))
+                }
+            } catch (error) {
+                console.error('Postal code search error:', error)
+            }
+        }
+    }
+
     const handleGeocode = async () => {
-        if (!formData.prefecture || !formData.address) {
-            alert('都道府県と住所を入力してください')
+        if (!formData.prefecture && !formData.postalCode) {
+            alert('郵便番号、または都道府県と住所を入力してください')
             return
         }
 
@@ -91,110 +119,48 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             return await response.json()
         }
 
-        const originalInput = `${formData.prefecture} ${formData.address}`
         const prefecture = formData.prefecture
+        const address = formData.address
+        const postalCode = formData.postalCode
 
         try {
             let queries = []
 
-            // 1. Postal Code (Strongest signal)
-            const postalMatch = originalInput.match(/[0-9]{3}-?[0-9]{4}/)
-            if (postalMatch) {
-                // Search JUST the postal code first (often returns the town center)
-                queries.push(postalMatch[0])
+            // Priority 1: Prefecture + Address (if core address exists)
+            // e.g. "東京都 千代田区外神田1-6-3"
+            if (prefecture && address) {
+                // Clean up common noise
+                const cleanAddress = address
+                    .replace(/[0-9]+F/gi, '')
+                    .replace(/ビル.*$/g, '')
+                    .trim()
+                queries.push(`${prefecture} ${cleanAddress}`)
             }
 
-            // 2. Extract "Core Address" (e.g., 1-6-3 or 1丁目6-3)
-            // Look for patterns like "1-6-3", "１丁目６−３", "1-6-3"
-            const addressMatch = formData.address.match(/([0-9０-９]+[丁目\-])+([0-9０-９]+[-\u2212－]*)([0-9０-９]+)?/)
-            let coreAddress = ''
-            if (addressMatch) {
-                coreAddress = addressMatch[0]
+            // Priority 2: Postal Code + Address (Without building info)
+            // If user entered postal code, use it!
+            if (postalCode && address) {
+                const cleanAddress = address
+                    .replace(/[0-9]+F/gi, '')
+                    .replace(/ビル.*$/g, '')
+                    .trim()
+                // Nominatim often understands "101-0021 1-6-3"
+                queries.push(`${postalCode} ${cleanAddress}`)
             }
 
-            // 3. Clean and normalize address
-            // Remove building names, duplicate prefectures, postal codes
-            let cleaned = formData.address
-
-            // Remove prefecture if it appears in input
-            cleaned = cleaned.replace(new RegExp(prefecture, 'g'), '')
-
-            // Remove "Tokyo" or "Metropolis" context if distinct from prefecture (for safety)
-            cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
-
-            // Remove postal code from address string
-            if (postalMatch) {
-                cleaned = cleaned.replace(postalMatch[0], '')
+            // Priority 3: Just Postal Code (Fallback)
+            if (postalCode) {
+                queries.push(postalCode)
             }
 
-            // Remove building/floor info
-            cleaned = cleaned
-                .replace(/[0-9]+F/gi, '')
-                .replace(/[０-９]+階/g, '')
-                .replace(/[0-9]+階/g, '')
-                .replace(/ビル.*$/g, '')
-                .replace(/[0-9]+号室/g, '')
-                .replace(/[\(（].*[\)）]/g, '')
-                .trim()
-
-            // Further clean leading/trailing symbols/commas
-            cleaned = cleaned.replace(/^[,，\s]+|[,，\s]+$/g, '')
-
-            // 4. Construct Queries
-
-            // Priority 1: Prefecture + Core Address (Most specific patterns like 1-6-3)
-            if (coreAddress) {
-                // Try to construct: Prefecture + Town (extracted) + CoreAddress
-                // Simple approach: Prefecture + Cleaned (which hopefully contains town + core)
-                // If coreAddress is "1-6-3" and cleaned is "Sotokanda 1-6-3", this is good.
-                queries.push(`${prefecture} ${cleaned}`)
-            }
-
-            // Priority 2: Reverse Order Handling (Google Maps style)
-            // e.g. "Building, 1-2-3 Town, Ward" -> "Ward Town 1-2-3"
-            if (formData.address.includes(',')) {
-                const parts = formData.address.split(',').map(p => p.trim())
-                // Remove the part that IS the prefecture or Japan
-                const reverseParts = parts.filter(p => !p.includes(prefecture) && !p.includes('Japan') && !p.includes('日本')).reverse()
-                queries.push(`${prefecture} ${reverseParts.join(' ')}`)
-            }
-
-            // Priority 3: Standard Cleaned Address
-            // If we haven't already added it via coreAddress check
-            if (!coreAddress) {
-                queries.push(`${prefecture} ${cleaned}`)
-            }
-
-            // Priority 4: Postal Code (Fallback - Broad area)
-            // Moved to bottom so we don't get "Chiyoda-ku center" (Tokyo Station) prematurely
-            if (postalMatch) {
-                queries.push(postalMatch[0])
-            }
-
-            // Priority 5: Fallback: Prefecture + First meaningful word of cleaned address
-            const simpleTown = cleaned.split(/[\s,，]/)[0]
-            if (simpleTown && simpleTown.length > 1) {
-                queries.push(`${prefecture} ${simpleTown}`)
-            }
-
-            // Priority 6: Just Prefecture + Core Address (if extracted) - as a strong fallback
-            if (coreAddress) {
-                queries.push(`${prefecture} ${coreAddress}`)
-            }
-
-            // Deduplicate and filter empty
+            // Deduplicate
             const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
             console.log('Generated queries:', uniqueQueries)
 
             let result = null
-            // Execute searches sequentially
             for (const q of uniqueQueries) {
                 const data = await searchLocation(q)
                 if (data && data.length > 0) {
-                    // Check if result is "too broad" (like just "Tokyo")
-                    // If the bounding box is huge, or display_name is short, it might be wrong.
-                    // But Nominatim doesn't give type easily.
-                    // We accept the first hit for now, as we prioritized specific queries.
                     result = data[0]
                     break
                 }
@@ -209,7 +175,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 }))
                 console.log('Geocoding success:', result.display_name)
             } else {
-                alert('住所の詳細な特定ができませんでした。自動設定された位置が正しいか地図で確認してください。')
+                alert('場所を特定できませんでした。手動でピンを設定してください。')
             }
         } catch (error) {
             console.error('Geocoding error:', error)
@@ -263,8 +229,20 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                             />
                         </div>
 
-                        {/* 都道府県 + 住所 */}
+                        {/* 郵便番号 + 都道府県 + 住所 */}
                         <div className="space-y-3">
+                            {/* 郵便番号 */}
+                            <div>
+                                <label className="text-xs text-gold/60 block mb-1.5">郵便番号</label>
+                                <input
+                                    name="postalCode"
+                                    value={formData.postalCode}
+                                    onChange={handlePostalCodeChange}
+                                    placeholder="例: 101-0021 (住所が自動入力されます)"
+                                    className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
+                                />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs text-gold/60 block mb-1.5">都道府県（必須）</label>
@@ -280,7 +258,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     </select>
                                 </div>
                                 <div className="flex flex-col">
-                                    <label className="text-xs text-gold/60 block mb-1.5">住所（任意）</label>
+                                    <label className="text-xs text-gold/60 block mb-1.5">住所（以降）</label>
                                     <div className="relative group/address">
                                         <input
                                             name="address"
@@ -306,7 +284,9 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                 </div>
                             </div>
                             <p className="text-[10px] text-neutral-500">
-                                ※ 住所を入力してピンアイコンを押すと、座標を自動設定します。
+                                ※ 郵便番号を入力すると住所が自動補完されます。
+                                <br />
+                                ※ ピンアイコンを押すと、入力された情報から座標を再取得します。
                             </p>
                         </div>
 
