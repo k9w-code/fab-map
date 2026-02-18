@@ -44,18 +44,19 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
         const loadInitial = async () => {
             if (initialData) {
-                let cityTown = ''
+                const prefecture = initialData.prefecture || ''
                 let streetAddr = initialData.address || ''
+                let cityTown = ''
                 let buildingInfo = ''
 
-                // Heuristic: Try to split by space first (which handles address_line2 concatenation)
-                const spaceIndex = streetAddr.indexOf(' ')
+                // 1. Separate building info if a space exists (handles "CityStreet Building")
+                const spaceIndex = streetAddr.lastIndexOf(' ')
                 if (spaceIndex !== -1) {
                     buildingInfo = streetAddr.substring(spaceIndex + 1).trim()
                     streetAddr = streetAddr.substring(0, spaceIndex).trim()
                 }
 
-                // If we have a postal code, try to strip the city/town part automatically
+                // 2. Fetch official city/town if postal code exists to help cleaning
                 if (initialData.postal_code) {
                     try {
                         const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${initialData.postal_code}`)
@@ -63,21 +64,32 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                         if (data.results && data.results[0]) {
                             const { address2, address3 } = data.results[0]
                             cityTown = `${address2}${address3}`
-                            // Strip cityTown from streetAddr if it starts with it
-                            if (streetAddr.startsWith(cityTown)) {
+
+                            // Crucial: Aggressively strip prefecture and cityTown from the start of streetAddr
+                            // Use a loop to handle cases where it's duplicated (like in the user's report)
+                            while (streetAddr.startsWith(prefecture) && prefecture.length > 0) {
+                                streetAddr = streetAddr.substring(prefecture.length).trim()
+                            }
+                            while (streetAddr.startsWith(cityTown) && cityTown.length > 0) {
                                 streetAddr = streetAddr.substring(cityTown.length).trim()
                             }
+
+                            // If cityTown is just town name (e.g. "Sotokanda"), but streetAddr has ward (e.g. "Chiyoda-ku")
+                            // the startsWith check might fail. But we hope zipcloud gives the full "WardTown".
                         }
                     } catch (error) {
                         console.error('Initial address split error:', error)
                     }
                 }
 
+                // If streetAddr still starts with common patterns that should be in cityTown
+                // but cityTown wasn't fetched, it's hard to automate perfectly without zipcloud.
+
                 setFormData({
                     ...initialData,
                     name: initialData.name || '',
                     postalCode: initialData.postal_code || '',
-                    prefecture: initialData.prefecture || '',
+                    prefecture: prefecture,
                     city_town: cityTown,
                     address_line1: streetAddr,
                     address_line2: buildingInfo,
@@ -89,7 +101,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     notes: initialData.notes || '',
                     submitter_id: initialData.submitter_id || sid
                 })
-            } else if (initialLocation) {
+            }
+            else if (initialLocation) {
                 setFormData(prev => ({
                     ...prev,
                     latitude: initialLocation.lat,
@@ -178,7 +191,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const prefecture = formData.prefecture
         const cityTown = formData.city_town || ''
         const street = formData.address_line1 || ''
-        const address = `${cityTown}${street}` // Use prefecture + City/Town + Street (no building)
+        const address = `${cityTown} ${street}`.trim() // Use space between city and street
         const postalCode = formData.postalCode
 
         const toHalfWidth = (str) => {
@@ -231,6 +244,11 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 !w.match(/^[0-9-]+$/)
             )
 
+            // Priority 0: Specific combination (Best for Nominatim)
+            if (prefecture && cityTown && street) {
+                queries.push(`${prefecture} ${cityTown} ${street}`)
+            }
+
             if (prefecture && coreAddress && wordParts.length > 0) {
                 queries.push(`${prefecture} ${wordParts.join(' ')} ${coreAddress}`)
                 queries.push(`${prefecture} ${wordParts.reverse().join(' ')} ${coreAddress}`)
@@ -272,7 +290,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     longitude: parseFloat(lon)
                 }))
                 console.log('Geocoding success:', result.display_name)
-            } else {
+            }
+            else {
                 alert('場所を特定できませんでした。手動でピンを設定してください。')
             }
         } catch (error) {
@@ -291,8 +310,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
 
         // Concatenate address for submission
-        // city_town + address_line1 (no space) + space + address_line2
-        const fullAddress = `${formData.city_town || ''}${formData.address_line1 || ''} ${formData.address_line2 || ''}`.trim()
+        // city_town + space + address_line1 + space + address_line2
+        const fullAddress = `${formData.city_town || ''} ${formData.address_line1 || ''} ${formData.address_line2 || ''}`.replace(/\s+/g, ' ').trim()
 
         const submissionPayload = {
             ...formData,
