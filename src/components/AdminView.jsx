@@ -96,10 +96,66 @@ const AdminView = ({ onBack, clickedLocation }) => {
         }
     }, [isAuthenticated, activeTab])
 
+    // GSI Geocoding helper (same logic as SubmissionForm)
+    const geocodeWithGSI = async (prefecture, cityTown, street) => {
+        const toHalfWidth = (str) => {
+            if (!str) return ''
+            return str.replace(/[！-～]/g, (s) =>
+                String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
+            ).replace(/　/g, ' ')
+        }
+        const normalizedStreet = toHalfWidth(street)
+        const queries = []
+        if (prefecture && cityTown && normalizedStreet) {
+            queries.push(`${prefecture}${cityTown}${normalizedStreet}`)
+            if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
+                const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
+                queries.push(`${prefecture}${cityTown}${chomeStreet}`)
+            }
+        }
+        if (prefecture && cityTown) {
+            queries.push(`${prefecture}${cityTown}`)
+        }
+
+        for (const q of queries) {
+            try {
+                console.log('GSI geocode (approve):', q)
+                const res = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`)
+                const data = await res.json()
+                if (data && data.length > 0) {
+                    const [lon, lat] = data[0].geometry.coordinates
+                    return { lat, lon }
+                }
+            } catch (e) {
+                console.error('GSI error:', e)
+            }
+        }
+        return null
+    }
+
     const handleApprove = async (id) => {
+        // Find the store to get address info
+        const store = stores.find(s => s.id === id)
+
+        let updateData = { status: 'approved' }
+
+        // Auto re-geocode using GSI before approving
+        if (store && store.prefecture) {
+            const coords = await geocodeWithGSI(
+                store.prefecture,
+                store.city_town || '',
+                store.address_line1 || ''
+            )
+            if (coords) {
+                updateData.latitude = coords.lat
+                updateData.longitude = coords.lon
+                console.log('Re-geocoded on approve:', coords)
+            }
+        }
+
         const { error } = await supabase
             .from('stores')
-            .update({ status: 'approved' })
+            .update(updateData)
             .eq('id', id)
 
         if (error) {
