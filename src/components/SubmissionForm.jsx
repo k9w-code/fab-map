@@ -325,19 +325,110 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
     }
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault()
         if (!formData.name || !formData.prefecture) {
             alert('店舗名と都道府県は必須です')
             return
         }
 
+        let finalLatitude = formData.latitude
+        let finalLongitude = formData.longitude
+
+        // Auto-geocode if coordinates are still at default Tokyo Station
+        // Default: 35.681, 139.767
+        const isDefaultLocation =
+            Math.abs(formData.latitude - 35.681) < 0.0001 &&
+            Math.abs(formData.longitude - 139.767) < 0.0001
+
+        if (isDefaultLocation && formData.prefecture) {
+            // Re-use logic for geocoding
+            // Since handleGeocode updates state, we need a separate logic or reuse it carefully.
+            // Here we copy the core logic for the submission flow to ensure we get values *before* submitting.
+
+            const prefecture = formData.prefecture
+            const cityTown = formData.city_town || ''
+            const street = formData.address_line1 || ''
+            const address = `${cityTown} ${street}`.trim()
+            const postal_code = formData.postal_code
+
+            // Normalize function
+            const toHalfWidth = (str) => {
+                if (!str) return ''
+                return str.replace(/[！-～]/g, (s) => {
+                    return String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
+                }).replace(/　/g, ' ')
+            }
+
+            // Simple Notification
+            const confirmAuto = window.confirm('位置情報が初期値（東京駅）のままです。入力された住所から自動設定してもよろしいですか？\nキャンセルを選ぶと、現在の位置（東京駅）で登録されます。')
+            if (confirmAuto) {
+                try {
+                    // Quick Search Helper
+                    const searchLocation = async (q) => {
+                        const response = await fetch(
+                            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
+                            { headers: { 'Accept-Language': 'ja', 'User-Agent': 'FaB-Map-App' } }
+                        )
+                        return await response.json()
+                    }
+
+                    let queries = []
+                    const normalizedPrefecture = toHalfWidth(prefecture)
+                    const normalizedCity = toHalfWidth(cityTown)
+                    const normalizedStreet = toHalfWidth(street)
+
+                    // 1. Full Address
+                    if (prefecture && cityTown && normalizedStreet) {
+                        queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
+                        // Chome fallback
+                        const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
+                        if (hyphnatedStreet !== normalizedStreet) queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
+                        if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
+                            const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
+                            queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
+                        }
+                    }
+                    // 2. Fallback: City/Town
+                    if (prefecture && cityTown) {
+                        queries.push(`${prefecture} ${cityTown}`)
+                    }
+                    // 3. Fallback: Postal Code
+                    if (postal_code) queries.push(postal_code)
+
+                    let result = null
+                    for (const q of queries) {
+                        const data = await searchLocation(q)
+                        if (data && data.length > 0) {
+                            result = data[0]
+                            break
+                        }
+                    }
+
+                    if (result) {
+                        finalLatitude = parseFloat(result.lat)
+                        finalLongitude = parseFloat(result.lon)
+                        alert(`位置情報を自動取得しました: ${result.display_name.substring(0, 40)}...`)
+                    } else {
+                        alert('住所から位置を特定できませんでした。手動で設定してください。')
+                        return // Stop submission to let user fix it
+                    }
+
+                } catch (error) {
+                    console.error("Auto-geocode error", error)
+                    alert('位置情報の自動取得に失敗しました。')
+                    return
+                }
+            }
+        }
+
         // Concatenate address for submission
-        // city_town + space + address_line1 + space + address_line2
         const fullAddress = `${formData.city_town || ''} ${formData.address_line1 || ''} ${formData.address_line2 || ''}`.replace(/\s+/g, ' ').trim()
 
         const submissionPayload = {
             ...formData,
+            latitude: finalLatitude,
+            longitude: finalLongitude,
             address: fullAddress,
         }
 
