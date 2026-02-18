@@ -70,28 +70,36 @@ const AdminView = ({ onBack }) => {
     }
 
     const handleDelete = async (id) => {
+        console.log('Delete button clicked for ID:', id)
         const itemType = activeTab === 'approved' ? '公開済み' : '承認待ち'
-        if (!confirm(`本当にこの${itemType}データを削除しますか？\nこの操作は取り消せません。`)) return
+
+        // Simple confirmation before proceeding to show we received the click
+        if (!window.confirm(`【確認】本当にこの${itemType}データを削除しますか？`)) {
+            return
+        }
 
         setIsLoading(true)
         try {
-            const { error } = await supabase
+            const { data, error, count } = await supabase
                 .from('stores')
                 .delete()
                 .eq('id', id)
+                .select() // Add select to verify if it was actually deleted
 
             if (error) {
-                console.error('Delete error:', error)
-                alert('削除に失敗しました: ' + error.message)
+                console.error('Delete error details:', error)
+                alert('削除に失敗しました（DBエラー）: ' + error.message)
+            } else if (!data || data.length === 0) {
+                alert('削除対象が見つかりませんでした。すでに削除されている可能性があります。')
+                fetchData() // Refresh list
             } else {
-                // Remove from local state immediately for better UX
+                alert('削除が完了しました')
                 setStores(prev => prev.filter(s => s.id !== id))
-                // Then fetch again to be sure
                 await fetchData()
             }
         } catch (err) {
             console.error('Fatal delete error:', err)
-            alert('削除中に予期せぬエラーが発生しました')
+            alert('削除中に予期せぬエラーが発生しました: ' + err.message)
         } finally {
             setIsLoading(false)
         }

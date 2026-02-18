@@ -115,7 +115,10 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
     }
 
     return (
-        <div className={`fullscreen-modal fixed inset-0 z-[60] bg-background ${isOpen ? 'open' : ''}`}>
+        <div
+            className={`fullscreen-modal fixed inset-0 z-[60] bg-background ${isOpen ? 'open' : 'pointer-events-none'}`}
+            style={{ visibility: isOpen ? 'visible' : 'hidden' }}
+        >
             <div className="flex flex-col h-full">
                 {/* Top bar */}
                 <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-gold/20">
