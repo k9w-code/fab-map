@@ -16,6 +16,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         name: '',
         postalCode: '',
         prefecture: '',
+        city_town: '',
         address_line1: '',
         address_line2: '',
         latitude: 35.681,
@@ -41,46 +42,81 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
     useEffect(() => {
         const sid = localStorage.getItem('fab_map_submitter_id') || ''
 
-        if (initialData) {
-            setFormData({
-                ...initialData,
-                name: initialData.name || '',
-                postalCode: initialData.postal_code || '',
-                prefecture: initialData.prefecture || '',
-                address_line1: initialData.address || '', // Map existing address to line1
-                address_line2: '', // Default empty for edit
-                latitude: initialData.latitude || 35.681,
-                longitude: initialData.longitude || 139.767,
-                fab_available: !!initialData.fab_available,
-                armory_available: !!initialData.armory_available,
-                format_text: initialData.format_text || '',
-                notes: initialData.notes || '',
-                submitter_id: initialData.submitter_id || sid
-            })
-        } else if (initialLocation) {
-            setFormData(prev => ({
-                ...prev,
-                latitude: initialLocation.lat,
-                longitude: initialLocation.lng,
-                submitter_id: sid
-            }))
-        } else if (!isOpen) {
-            // Reset form
-            setFormData({
-                name: '',
-                postalCode: '',
-                prefecture: '',
-                address_line1: '',
-                address_line2: '',
-                latitude: 35.681,
-                longitude: 139.767,
-                fab_available: false,
-                armory_available: false,
-                format_text: '',
-                notes: '',
-                submitter_id: sid
-            })
+        const loadInitial = async () => {
+            if (initialData) {
+                let cityTown = ''
+                let streetAddr = initialData.address || ''
+                let buildingInfo = ''
+
+                // Heuristic: Try to split by space first (which handles address_line2 concatenation)
+                const spaceIndex = streetAddr.indexOf(' ')
+                if (spaceIndex !== -1) {
+                    buildingInfo = streetAddr.substring(spaceIndex + 1).trim()
+                    streetAddr = streetAddr.substring(0, spaceIndex).trim()
+                }
+
+                // If we have a postal code, try to strip the city/town part automatically
+                if (initialData.postal_code) {
+                    try {
+                        const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${initialData.postal_code}`)
+                        const data = await response.json()
+                        if (data.results && data.results[0]) {
+                            const { address2, address3 } = data.results[0]
+                            cityTown = `${address2}${address3}`
+                            // Strip cityTown from streetAddr if it starts with it
+                            if (streetAddr.startsWith(cityTown)) {
+                                streetAddr = streetAddr.substring(cityTown.length).trim()
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Initial address split error:', error)
+                    }
+                }
+
+                setFormData({
+                    ...initialData,
+                    name: initialData.name || '',
+                    postalCode: initialData.postal_code || '',
+                    prefecture: initialData.prefecture || '',
+                    city_town: cityTown,
+                    address_line1: streetAddr,
+                    address_line2: buildingInfo,
+                    latitude: initialData.latitude || 35.681,
+                    longitude: initialData.longitude || 139.767,
+                    fab_available: !!initialData.fab_available,
+                    armory_available: !!initialData.armory_available,
+                    format_text: initialData.format_text || '',
+                    notes: initialData.notes || '',
+                    submitter_id: initialData.submitter_id || sid
+                })
+            } else if (initialLocation) {
+                setFormData(prev => ({
+                    ...prev,
+                    latitude: initialLocation.lat,
+                    longitude: initialLocation.lng,
+                    submitter_id: sid
+                }))
+            } else if (!isOpen) {
+                // Reset form
+                setFormData({
+                    name: '',
+                    postalCode: '',
+                    prefecture: '',
+                    city_town: '',
+                    address_line1: '',
+                    address_line2: '',
+                    latitude: 35.681,
+                    longitude: 139.767,
+                    fab_available: false,
+                    armory_available: false,
+                    format_text: '',
+                    notes: '',
+                    submitter_id: sid
+                })
+            }
         }
+
+        loadInitial()
     }, [initialData, initialLocation, isOpen])
 
     const handleChange = (e) => {
@@ -106,7 +142,8 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     setFormData(prev => ({
                         ...prev,
                         prefecture: address1,
-                        address_line1: `${address2}${address3}`
+                        city_town: `${address2}${address3}`,
+                        address_line1: '' // Clear street for new entry
                     }))
                 }
             } catch (error) {
@@ -139,7 +176,9 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
 
         const prefecture = formData.prefecture
-        const address = formData.address_line1 // Use ONLY line1 for geocoding
+        const cityTown = formData.city_town || ''
+        const street = formData.address_line1 || ''
+        const address = `${cityTown}${street}` // Use prefecture + City/Town + Street (no building)
         const postalCode = formData.postalCode
 
         const toHalfWidth = (str) => {
@@ -152,28 +191,19 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             let queries = []
 
             // Normalize input address
-            // 1. Convert to half-width (１丁目 -> 1丁目)
             let normalizedAddress = toHalfWidth(address)
 
-            // 2. Extract "Core Address" (e.g., 1-6-3 or 1-6-3)
-            // Look for patterns like "1-6-3", "1丁目6-3"
+            // Extract "Core Address"
             const addressMatch = normalizedAddress.match(/([0-9]+[丁目\-])+([0-9]+[-\u2212－]*)([0-9]+)?/)
             let coreAddress = ''
             if (addressMatch) {
                 coreAddress = addressMatch[0]
             }
 
-            // 3. Clean and normalize address
-            // Remove building names carefully. Don't use .*$ as it eats the rest of the line!
             let cleaned = normalizedAddress
-
-            // Remove prefecture if it appears in input
             cleaned = cleaned.replace(new RegExp(prefecture, 'g'), '')
-
-            // Remove "Tokyo" or "Japan"
             cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
 
-            // Remove postal code from address string if present
             if (postalCode && cleaned.includes(postalCode)) {
                 cleaned = cleaned.replace(postalCode, '')
             }
@@ -181,70 +211,47 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 cleaned = cleaned.replace(/[0-9]{3}-?[0-9]{4}/, '')
             }
 
-            // Remove building info patterns
-            // Just remove "Build name" + "Floor" if they look like specific chunks
-            // e.g. "Kumaya Bldg 3F" -> remove
+            // Remove building info from search
             cleaned = cleaned
-                .replace(/[0-9]+F/gi, '') // 3F
-                .replace(/No\.[0-9]+/gi, '') // No.123
-                .replace(/\S+ビル/g, '') // Word ending in 'Building'
-                .replace(/ビル[ \t]*[0-9]*/g, '') // 'Building 3'
+                .replace(/[0-9]+F/gi, '')
+                .replace(/No\.[0-9]+/gi, '')
+                .replace(/\S+ビル/g, '')
+                .replace(/ビル[ \t]*[0-9]*/g, '')
                 .replace(/[0-9]+階/g, '')
                 .replace(/[0-9]+号室/g, '')
                 .replace(/[\(（].*[\)）]/g, '')
                 .trim()
 
-            // Further clean leading/trailing symbols/commas
             cleaned = cleaned.replace(/^[,，\s]+|[,，\s]+$/g, '')
 
-            // 4. Construct Queries
-
-            // Priority 0: Reordered Standard Japanese Address
-            // Detected: "1-6-3 Sotokanda Chiyoda-ku" -> "Tokyo Chiyoda-ku Sotokanda 1-6-3"
-            // Extract meaningful words (Kanji/Kana/Letters) that are NOT the core address
             const wordParts = cleaned.split(/[\s,，]+/).filter(w =>
                 w &&
                 !w.includes(coreAddress) &&
                 w !== postalCode &&
-                !w.match(/^[0-9-]+$/) // Not just numbers
+                !w.match(/^[0-9-]+$/)
             )
 
-            // If we have words (Town/Ward) and a Core Address, put words FIRST
             if (prefecture && coreAddress && wordParts.length > 0) {
-                // Trying: Prefecture + Words(joined) + CoreAddress
-                // e.g. "東京都" + "外神田 千代田区" + "1-6-3"
-                // Ideally reverse the words if they look inverted? "の外神田 千代田区" -> "千代田区 外神田"?
-                // Let's just try the order found in 'cleaned', but moved BEFORE the number.
-                // Also try reversing the words just in case "Sotokanda Chiyoda-ku" -> "Chiyoda-ku Sotokanda"
-
                 queries.push(`${prefecture} ${wordParts.join(' ')} ${coreAddress}`)
                 queries.push(`${prefecture} ${wordParts.reverse().join(' ')} ${coreAddress}`)
             }
 
-            // Priority 1: Postal Code + Core Address (The content-match king)
-            // e.g. "101-0021 1-6-3" -> Very high chance of success IF zip maps to town
             if (postalCode && coreAddress) {
                 queries.push(`${postalCode} ${coreAddress}`)
             }
 
-            // Priority 2: Prefecture + Core Address (Specific, but might fail without town)
-            // e.g. "東京都 1-6-3" -> Should hit if unique, but "1-6-3" is common. 
-            // Only use if we have NO other words.
             if (prefecture && coreAddress && wordParts.length === 0) {
                 queries.push(`${prefecture} ${coreAddress}`)
             }
 
-            // Priority 3: Prefecture + Cleaned Address (As is)
             if (prefecture && cleaned) {
                 queries.push(`${prefecture} ${cleaned}`)
             }
 
-            // Priority 5: Just Postal Code (Fallback)
             if (postalCode) {
                 queries.push(postalCode)
             }
 
-            // Deduplicate
             const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
             console.log('Generated queries:', uniqueQueries)
 
@@ -284,13 +291,12 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
 
         // Concatenate address for submission
-        const fullAddress = `${formData.address_line1 || ''} ${formData.address_line2 || ''}`.trim()
+        // city_town + address_line1 (no space) + space + address_line2
+        const fullAddress = `${formData.city_town || ''}${formData.address_line1 || ''} ${formData.address_line2 || ''}`.trim()
 
-        // Create submission payload
         const submissionPayload = {
             ...formData,
             address: fullAddress,
-            // submitter_id is already in formData
         }
 
         onSubmit(submissionPayload)
@@ -359,30 +365,41 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                         {PREFECTURES.map(p => <option key={p} value={p}>{p}</option>)}
                                     </select>
                                 </div>
-                                <div className="flex flex-col">
-                                    <label className="text-xs text-gold/60 block mb-1.5">市区町村、番地（必須）</label>
-                                    <div className="relative group/address">
-                                        <input
-                                            name="address_line1"
-                                            value={formData.address_line1}
-                                            onChange={handleChange}
-                                            placeholder="例: 千代田区外神田1-6-3"
-                                            className="w-full h-11 rounded-lg border border-white/10 bg-white/5 pl-4 pr-12 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleGeocode}
-                                            disabled={isGeocoding}
-                                            title="住所から座標を取得"
-                                            className="absolute right-1 top-1 bottom-1 px-3 rounded-md bg-gold/10 hover:bg-gold/20 text-gold transition-colors flex items-center justify-center disabled:opacity-50"
-                                        >
-                                            {isGeocoding ? (
-                                                <div className="w-4 h-4 border-2 border-gold/20 border-t-gold animate-spin rounded-full" />
-                                            ) : (
-                                                <MapPin size={16} />
-                                            )}
-                                        </button>
-                                    </div>
+                                <div>
+                                    <label className="text-xs text-gold/60 block mb-1.5">市区町村（自動入力）</label>
+                                    <input
+                                        name="city_town"
+                                        value={formData.city_town}
+                                        onChange={handleChange}
+                                        placeholder="千代田区外神田"
+                                        className={`w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light opacity-80 outline-none focus:border-gold/40 transition-colors`}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col">
+                                <label className="text-xs text-gold/60 block mb-1.5">番地（必須）</label>
+                                <div className="relative group/address">
+                                    <input
+                                        name="address_line1"
+                                        value={formData.address_line1}
+                                        onChange={handleChange}
+                                        placeholder="例: 1-6-3"
+                                        className="w-full h-11 rounded-lg border border-white/10 bg-white/5 pl-4 pr-12 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleGeocode}
+                                        disabled={isGeocoding}
+                                        title="住所から座標を取得"
+                                        className="absolute right-1 top-1 bottom-1 px-3 rounded-md bg-gold/10 hover:bg-gold/20 text-gold transition-colors flex items-center justify-center disabled:opacity-50"
+                                    >
+                                        {isGeocoding ? (
+                                            <div className="w-4 h-4 border-2 border-gold/20 border-t-gold animate-spin rounded-full" />
+                                        ) : (
+                                            <MapPin size={16} />
+                                        )}
+                                    </button>
                                 </div>
                             </div>
 
@@ -397,14 +414,14 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
                                 />
                                 <p className="text-[10px] text-neutral-500 mt-1">
-                                    ※ 建物名は地図検索には使用されません。住所不明エラーを防ぐため、建物名はここに分けて入力してください。
+                                    ※ 建物名は地図検索には使用されません。
                                 </p>
                             </div>
 
                             <p className="text-[10px] text-neutral-500">
-                                ※ 郵便番号を入力すると住所が自動補完されます。
+                                ※ 郵便番号を入力すると市区町村まで自動入力されます。
                                 <br />
-                                ※ ピンアイコンを押すと、入力された情報（都道府県＋番地）から座標を再取得します。
+                                ※ ピンアイコンを押すと、入力された情報（市区町村＋番地）から座標を再取得します。
                             </p>
                         </div>
 
