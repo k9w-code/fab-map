@@ -16,36 +16,53 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         name: '',
         postalCode: '',
         prefecture: '',
-        address: '',
+        address_line1: '',
+        address_line2: '',
         latitude: 35.681,
         longitude: 139.767,
         fab_available: false,
         armory_available: false,
         format_text: '',
-        notes: ''
+        notes: '',
+        submitter_id: ''
     })
     const [isGeocoding, setIsGeocoding] = useState(false)
 
+    // Load or generate Submitter ID
     useEffect(() => {
+        let sid = localStorage.getItem('fab_map_submitter_id')
+        if (!sid) {
+            sid = crypto.randomUUID()
+            localStorage.setItem('fab_map_submitter_id', sid)
+        }
+        setFormData(prev => ({ ...prev, submitter_id: sid }))
+    }, [])
+
+    useEffect(() => {
+        const sid = localStorage.getItem('fab_map_submitter_id') || ''
+
         if (initialData) {
             setFormData({
                 ...initialData,
                 name: initialData.name || '',
-                postalCode: initialData.postal_code || '', // Support existing data if any
+                postalCode: initialData.postal_code || '',
                 prefecture: initialData.prefecture || '',
-                address: initialData.address || '',
+                address_line1: initialData.address || '', // Map existing address to line1
+                address_line2: '', // Default empty for edit
                 latitude: initialData.latitude || 35.681,
                 longitude: initialData.longitude || 139.767,
                 fab_available: !!initialData.fab_available,
                 armory_available: !!initialData.armory_available,
                 format_text: initialData.format_text || '',
-                notes: initialData.notes || ''
+                notes: initialData.notes || '',
+                submitter_id: initialData.submitter_id || sid
             })
         } else if (initialLocation) {
             setFormData(prev => ({
                 ...prev,
                 latitude: initialLocation.lat,
-                longitude: initialLocation.lng
+                longitude: initialLocation.lng,
+                submitter_id: sid
             }))
         } else if (!isOpen) {
             // Reset form
@@ -53,13 +70,15 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 name: '',
                 postalCode: '',
                 prefecture: '',
-                address: '',
+                address_line1: '',
+                address_line2: '',
                 latitude: 35.681,
                 longitude: 139.767,
                 fab_available: false,
                 armory_available: false,
                 format_text: '',
-                notes: ''
+                notes: '',
+                submitter_id: sid
             })
         }
     }, [initialData, initialLocation, isOpen])
@@ -87,7 +106,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     setFormData(prev => ({
                         ...prev,
                         prefecture: address1,
-                        address: `${address2}${address3}`
+                        address_line1: `${address2}${address3}`
                     }))
                 }
             } catch (error) {
@@ -120,7 +139,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
 
         const prefecture = formData.prefecture
-        const address = formData.address
+        const address = formData.address_line1 // Use ONLY line1 for geocoding
         const postalCode = formData.postalCode
 
         const toHalfWidth = (str) => {
@@ -263,7 +282,18 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             alert('店舗名と都道府県は必須です')
             return
         }
-        onSubmit(formData)
+
+        // Concatenate address for submission
+        const fullAddress = `${formData.address_line1 || ''} ${formData.address_line2 || ''}`.trim()
+
+        // Create submission payload
+        const submissionPayload = {
+            ...formData,
+            address: fullAddress,
+            // submitter_id is already in formData
+        }
+
+        onSubmit(submissionPayload)
     }
 
     return (
@@ -330,13 +360,13 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     </select>
                                 </div>
                                 <div className="flex flex-col">
-                                    <label className="text-xs text-gold/60 block mb-1.5">住所（以降）</label>
+                                    <label className="text-xs text-gold/60 block mb-1.5">市区町村、番地（必須）</label>
                                     <div className="relative group/address">
                                         <input
-                                            name="address"
-                                            value={formData.address}
+                                            name="address_line1"
+                                            value={formData.address_line1}
                                             onChange={handleChange}
-                                            placeholder="市区町村、番地"
+                                            placeholder="例: 千代田区外神田1-6-3"
                                             className="w-full h-11 rounded-lg border border-white/10 bg-white/5 pl-4 pr-12 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
                                         />
                                         <button
@@ -355,22 +385,47 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Address Line 2 */}
+                            <div>
+                                <label className="text-xs text-gold/60 block mb-1.5">建物名・部屋番号（任意）</label>
+                                <input
+                                    name="address_line2"
+                                    value={formData.address_line2}
+                                    onChange={handleChange}
+                                    placeholder="例: アキバプレイス 4F"
+                                    className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
+                                />
+                                <p className="text-[10px] text-neutral-500 mt-1">
+                                    ※ 建物名は地図検索には使用されません。住所不明エラーを防ぐため、建物名はここに分けて入力してください。
+                                </p>
+                            </div>
+
                             <p className="text-[10px] text-neutral-500">
                                 ※ 郵便番号を入力すると住所が自動補完されます。
                                 <br />
-                                ※ ピンアイコンを押すと、入力された情報から座標を再取得します。
+                                ※ ピンアイコンを押すと、入力された情報（都道府県＋番地）から座標を再取得します。
                             </p>
                         </div>
 
-                        {/* 座標情報 */}
-                        <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                            <div className="flex items-center gap-2 text-xs text-gold/60">
-                                <MapPin size={14} />
-                                <span>座標: {formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</span>
+                        {/* 座標情報 + 地図修正ボタン */}
+                        <div className="bg-white/5 p-3 rounded-lg border border-white/5 flex items-center justify-between">
+                            <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2 text-xs text-gold/60">
+                                    <MapPin size={14} />
+                                    <span>座標: {formData.latitude?.toFixed(5)}, {formData.longitude?.toFixed(5)}</span>
+                                </div>
+                                <p className="text-[10px] text-neutral-500">
+                                    {isGeocoding ? '位置を検索中...' : '※ 自動設定された位置がズレている場合は修正してください'}
+                                </p>
                             </div>
-                            <p className="text-[10px] text-neutral-500 mt-1">
-                                ※ 地図上をタップしてから開くと自動設定されます
-                            </p>
+                            <button
+                                type="button"
+                                onClick={() => onSubmit({ ...formData, mode: 'pick_location' })}
+                                className="px-3 py-1.5 rounded-md bg-gold/10 hover:bg-gold/20 text-xs text-gold border border-gold/30 transition-colors"
+                            >
+                                地図上で位置を修正
+                            </button>
                         </div>
 
                         {/* チェックボックス */}

@@ -139,7 +139,8 @@ function App() {
         // Filter out non-existent columns
         const validColumns = [
             'name', 'prefecture', 'address', 'latitude', 'longitude',
-            'fab_available', 'armory_available', 'format_text', 'notes'
+            'fab_available', 'armory_available', 'format_text', 'notes',
+            'submitter_id'
         ]
 
         const cleanData = {}
@@ -173,6 +174,7 @@ function App() {
                     window.location.hash = ''
                     fetchStores()
                 }}
+                clickedLocation={clickedLocation}
             />
         )
     }

@@ -14,8 +14,39 @@ const AdminView = ({ onBack }) => {
     const [editingStore, setEditingStore] = useState(null)
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [itemToDelete, setItemToDelete] = useState(null)
+    const [blockedIds, setBlockedIds] = useState([])
 
-    // Check password on mount / when it changes
+    // Load blocked IDs
+    useEffect(() => {
+        const stored = localStorage.getItem('fab_map_blocked_ids')
+        if (stored) {
+            setBlockedIds(JSON.parse(stored))
+        }
+    }, [])
+
+    const handleBlockUser = (submitterId) => {
+        if (!submitterId) return
+        if (!window.confirm('このユーザーをローカルブロックしますか？\n今後このユーザーからの投稿は強調表示されます。')) return
+
+        const newBlocked = [...blockedIds, submitterId]
+        setBlockedIds(newBlocked)
+        localStorage.setItem('fab_map_blocked_ids', JSON.stringify(newBlocked))
+    }
+
+    const handleUnblockUser = (submitterId) => {
+        if (!window.confirm('ブロックを解除しますか？')) return
+        const newBlocked = blockedIds.filter(id => id !== submitterId)
+        setBlockedIds(newBlocked)
+        localStorage.setItem('fab_map_blocked_ids', JSON.stringify(newBlocked))
+    }
+
+    // ... (existing code)
+
+    // In render loop
+    // inside stores.map((store) => {
+    // const isBlocked = blockedIds.includes(store.submitter_id)
+
+    // Changing the loop to include checks
     useEffect(() => {
         const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123'
         const savedAuth = sessionStorage.getItem('admin_auth')
@@ -23,6 +54,21 @@ const AdminView = ({ onBack }) => {
             setIsAuthenticated(true)
         }
     }, [])
+
+    // Monitor clickedLocation for picking
+    useEffect(() => {
+        if (isPickingLocation && clickedLocation) {
+            console.log('Picked location:', clickedLocation)
+            // Update editingStore with new coordinates
+            setEditingStore(prev => ({
+                ...prev,
+                latitude: clickedLocation.lat,
+                longitude: clickedLocation.lng
+            }))
+            setIsPickingLocation(false)
+            setIsEditOpen(true) // Re-open form
+        }
+    }, [clickedLocation, isPickingLocation])
 
     const handleLogin = (e) => {
         e.preventDefault()
@@ -103,11 +149,26 @@ const AdminView = ({ onBack }) => {
     }
 
     const handleEditSave = async (formData) => {
+        // Check if mode is location picking
+        if (formData.mode === 'pick_location') {
+            setIsEditOpen(false) // Hide form
+            setIsPickingLocation(true) // Enable transparent mode
+            // Preserve current form state in editingStore
+            setEditingStore({
+                ...editingStore,
+                ...formData,
+                mode: undefined // clear mode
+            })
+            return
+        }
+
+        console.log('Saving edit for:', editingStore.id, formData)
+
         // Filter out system columns and non-existent columns
         const validColumns = [
             'name', 'prefecture', 'address', 'latitude', 'longitude',
             'fab_available', 'armory_available', 'format_text', 'notes',
-            'status', 'source_type'
+            'status', 'source_type', 'postal_code' // Added postal_code
         ]
 
         const cleanData = {}
@@ -117,16 +178,25 @@ const AdminView = ({ onBack }) => {
             }
         })
 
-        const { error } = await supabase
-            .from('stores')
-            .update(cleanData)
-            .eq('id', editingStore.id)
+        try {
+            const { data, error } = await supabase
+                .from('stores')
+                .update(cleanData)
+                .eq('id', editingStore.id)
+                .select()
 
-        if (error) {
-            alert('保存に失敗しました: ' + error.message)
-        } else {
-            setIsEditOpen(false)
-            fetchData()
+            if (error) {
+                console.error('Update error:', error)
+                alert('保存に失敗しました: ' + error.message)
+            } else {
+                console.log('Update success:', data)
+                setIsEditOpen(false)
+                setEditingStore(null)
+                fetchData()
+            }
+        } catch (err) {
+            console.error('Unexpected update error:', err)
+            alert('予期せぬエラーが発生しました')
         }
     }
 
@@ -162,6 +232,26 @@ const AdminView = ({ onBack }) => {
                         地図に戻る
                     </button>
                 </Card>
+            </div>
+        )
+    }
+
+    // If picking location, render hidden/transparent overlay
+    if (isPickingLocation) {
+        return (
+            <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-start pt-20 bg-black/20">
+                <div className="pointer-events-auto bg-black/80 text-gold px-6 py-3 rounded-full border border-gold shadow-lg backdrop-blur-md animate-bounce">
+                    📍 地図上の正しい位置をタップしてください
+                </div>
+                <button
+                    onClick={() => {
+                        setIsPickingLocation(false)
+                        setIsEditOpen(true)
+                    }}
+                    className="pointer-events-auto mt-4 text-sm text-white/80 underline hover:text-white"
+                >
+                    キャンセルして戻る
+                </button>
             </div>
         )
     }
@@ -209,69 +299,89 @@ const AdminView = ({ onBack }) => {
                     </div>
                 ) : (
                     <div className="grid gap-4">
-                        {stores.map((store) => (
-                            <Card key={store.id} className="p-4 border-gold/10 hover:border-gold/30 transition-all bg-card/30 group">
-                                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                                    <div className="flex-1 space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="text-lg font-bold text-gold-light">{store.name}</h3>
-                                            <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-neutral-400">
-                                                ID: {store.id.slice(0, 8)}
-                                            </span>
+                        {stores.map((store) => {
+                            const isBlocked = blockedIds.includes(store.submitter_id)
+                            return (
+                                <Card key={store.id} className={`p-4 transition-all bg-card/30 group ${isBlocked ? 'border-red-500/50 bg-red-900/10' : 'border-gold/10 hover:border-gold/30'}`}>
+                                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                                        <div className="flex-1 space-y-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <h3 className="text-lg font-bold text-gold-light">{store.name}</h3>
+                                                <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-neutral-400">
+                                                    ID: {store.id.slice(0, 8)}
+                                                </span>
+                                                {store.submitter_id && (
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded cursor-help ${isBlocked ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-white/5 text-neutral-500'}`} title={store.submitter_id}>
+                                                        User: {store.submitter_id.slice(0, 8)}
+                                                    </span>
+                                                )}
+                                                {isBlocked && <span className="text-[10px] font-bold text-red-500">BLOCKED</span>}
+                                            </div>
+                                            <div className="text-sm text-neutral-400">
+                                                <p>{store.prefecture} {store.address}</p>
+                                            </div>
+                                            <div className="flex gap-4 text-[10px] font-mono uppercase">
+                                                <span className={store.fab_available ? 'text-green-400' : 'text-red-400'}>
+                                                    FAB: {store.fab_available ? 'YES' : 'NO'}
+                                                </span>
+                                                <span className={store.armory_available ? 'text-green-400' : 'text-red-400'}>
+                                                    Armory: {store.armory_available ? 'YES' : 'NO'}
+                                                </span>
+                                            </div>
+                                            {store.format_text && (
+                                                <p className="text-xs bg-white/5 p-2 rounded text-neutral-300">
+                                                    Format: {store.format_text}
+                                                </p>
+                                            )}
+                                            {store.notes && (
+                                                <p className="text-xs italic text-neutral-400">Memo: {store.notes}</p>
+                                            )}
                                         </div>
-                                        <div className="text-sm text-neutral-400">
-                                            <p>{store.prefecture} {store.address}</p>
-                                        </div>
-                                        <div className="flex gap-4 text-[10px] font-mono uppercase">
-                                            <span className={store.fab_available ? 'text-green-400' : 'text-red-400'}>
-                                                FAB: {store.fab_available ? 'YES' : 'NO'}
-                                            </span>
-                                            <span className={store.armory_available ? 'text-green-400' : 'text-red-400'}>
-                                                Armory: {store.armory_available ? 'YES' : 'NO'}
-                                            </span>
-                                        </div>
-                                        {store.format_text && (
-                                            <p className="text-xs bg-white/5 p-2 rounded text-neutral-300">
-                                                Format: {store.format_text}
-                                            </p>
-                                        )}
-                                        {store.notes && (
-                                            <p className="text-xs italic text-neutral-400">Memo: {store.notes}</p>
-                                        )}
-                                    </div>
 
-                                    <div className="flex sm:flex-col gap-2 w-full sm:w-auto self-stretch">
-                                        {activeTab === 'pending' && (
+                                        <div className="flex sm:flex-col gap-2 w-full sm:w-auto self-stretch">
+                                            {activeTab === 'pending' && (
+                                                <button
+                                                    onClick={() => handleApprove(store.id)}
+                                                    className="flex-1 sm:w-12 h-10 rounded-lg bg-green-600/80 hover:bg-green-600 text-white flex items-center justify-center transition-colors shadow-lg"
+                                                    title="承認する"
+                                                >
+                                                    <Check size={20} />
+                                                </button>
+                                            )}
                                             <button
-                                                onClick={() => handleApprove(store.id)}
-                                                className="flex-1 sm:w-12 h-10 rounded-lg bg-green-600/80 hover:bg-green-600 text-white flex items-center justify-center transition-colors shadow-lg"
-                                                title="承認する"
+                                                onClick={() => {
+                                                    console.log('Edit clicked', store.id)
+                                                    setEditingStore(store)
+                                                    setIsEditOpen(true)
+                                                }}
+                                                className="relative flex-1 sm:w-12 h-10 rounded-lg bg-white/10 hover:bg-white/20 text-gold flex items-center justify-center transition-colors cursor-pointer z-10"
+                                                title="編集する"
                                             >
-                                                <Check size={20} />
+                                                <Edit2 size={18} className="pointer-events-none" />
                                             </button>
-                                        )}
-                                        <button
-                                            onClick={() => {
-                                                console.log('Edit clicked', store.id)
-                                                setEditingStore(store)
-                                                setIsEditOpen(true)
-                                            }}
-                                            className="relative flex-1 sm:w-12 h-10 rounded-lg bg-white/10 hover:bg-white/20 text-gold flex items-center justify-center transition-colors cursor-pointer z-10"
-                                            title="編集する"
-                                        >
-                                            <Edit2 size={18} className="pointer-events-none" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteClick(store)}
-                                            className="relative flex-1 sm:w-12 h-10 rounded-lg bg-red-900/40 hover:bg-red-900 text-red-100 flex items-center justify-center transition-colors cursor-pointer z-10 border border-red-500/30"
-                                            title="削除する"
-                                        >
-                                            <Trash2 size={18} className="pointer-events-none" />
-                                        </button>
+
+                                            {store.submitter_id && (
+                                                <button
+                                                    onClick={() => isBlocked ? handleUnblockUser(store.submitter_id) : handleBlockUser(store.submitter_id)}
+                                                    className={`relative flex-1 sm:w-12 h-10 rounded-lg flex items-center justify-center transition-colors cursor-pointer z-10 ${isBlocked ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-white/5 hover:bg-white/10 text-neutral-500'}`}
+                                                    title={isBlocked ? "ブロック解除" : "このユーザーをブロック"}
+                                                >
+                                                    <Lock size={16} className="pointer-events-none" />
+                                                </button>
+                                            )}
+
+                                            <button
+                                                onClick={() => handleDeleteClick(store)}
+                                                className="relative flex-1 sm:w-12 h-10 rounded-lg bg-red-900/40 hover:bg-red-900 text-red-100 flex items-center justify-center transition-colors cursor-pointer z-10 border border-red-500/30"
+                                                title="削除する"
+                                            >
+                                                <Trash2 size={18} className="pointer-events-none" />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            </Card>
-                        ))}
+                                </Card>
+                            )
+                        })}
                     </div>
                 )}
             </div>
