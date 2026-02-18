@@ -45,45 +45,45 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const loadInitial = async () => {
             if (initialData) {
                 const prefecture = initialData.prefecture || ''
-                let streetAddr = initialData.address || ''
-                let cityTown = ''
-                let buildingInfo = ''
+                let cityTown = initialData.city_town || ''
+                let streetAddr = initialData.address_line1 || ''
+                let buildingInfo = initialData.address_line2 || ''
 
-                // 1. Separate building info if a space exists (handles "CityStreet Building")
-                const spaceIndex = streetAddr.lastIndexOf(' ')
-                if (spaceIndex !== -1) {
-                    buildingInfo = streetAddr.substring(spaceIndex + 1).trim()
-                    streetAddr = streetAddr.substring(0, spaceIndex).trim()
-                }
+                // Fallback: If new columns are empty, try to parse from legacy 'address' column
+                if (!cityTown && !streetAddr && initialData.address) {
+                    let rawAddr = initialData.address
 
-                // 2. Fetch official city/town if postal code exists to help cleaning
-                if (initialData.postal_code) {
-                    try {
-                        const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${initialData.postal_code}`)
-                        const data = await response.json()
-                        if (data.results && data.results[0]) {
-                            const { address2, address3 } = data.results[0]
-                            cityTown = `${address2}${address3}`
+                    // 1. Separate building info if a space exists (handles "CityStreet Building")
+                    const spaceIndex = rawAddr.lastIndexOf(' ')
+                    if (spaceIndex !== -1) {
+                        buildingInfo = rawAddr.substring(spaceIndex + 1).trim()
+                        streetAddr = rawAddr.substring(0, spaceIndex).trim()
+                    } else {
+                        streetAddr = rawAddr
+                    }
 
-                            // Crucial: Aggressively strip prefecture and cityTown from the start of streetAddr
-                            // Use a loop to handle cases where it's duplicated (like in the user's report)
-                            while (streetAddr.startsWith(prefecture) && prefecture.length > 0) {
-                                streetAddr = streetAddr.substring(prefecture.length).trim()
+                    // 2. Fetch official city/town if postal code exists to help cleaning
+                    if (initialData.postal_code) {
+                        try {
+                            const response = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${initialData.postal_code}`)
+                            const data = await response.json()
+                            if (data.results && data.results[0]) {
+                                const { address2, address3 } = data.results[0]
+                                cityTown = `${address2}${address3}`
+
+                                // Aggressively strip prefecture and cityTown from the start of streetAddr
+                                while (streetAddr.startsWith(prefecture) && prefecture.length > 0) {
+                                    streetAddr = streetAddr.substring(prefecture.length).trim()
+                                }
+                                while (streetAddr.startsWith(cityTown) && cityTown.length > 0) {
+                                    streetAddr = streetAddr.substring(cityTown.length).trim()
+                                }
                             }
-                            while (streetAddr.startsWith(cityTown) && cityTown.length > 0) {
-                                streetAddr = streetAddr.substring(cityTown.length).trim()
-                            }
-
-                            // If cityTown is just town name (e.g. "Sotokanda"), but streetAddr has ward (e.g. "Chiyoda-ku")
-                            // the startsWith check might fail. But we hope zipcloud gives the full "WardTown".
+                        } catch (error) {
+                            console.error('Initial address split error:', error)
                         }
-                    } catch (error) {
-                        console.error('Initial address split error:', error)
                     }
                 }
-
-                // If streetAddr still starts with common patterns that should be in cityTown
-                // but cityTown wasn't fetched, it's hard to automate perfectly without zipcloud.
 
                 setFormData({
                     ...initialData,

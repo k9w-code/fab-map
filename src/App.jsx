@@ -140,7 +140,7 @@ function App() {
         const validColumns = [
             'name', 'prefecture', 'address', 'latitude', 'longitude',
             'fab_available', 'armory_available', 'format_text', 'notes',
-            'submitter_id'
+            'submitter_id', 'postal_code', 'city_town', 'address_line1', 'address_line2'
         ]
 
         const cleanData = {}

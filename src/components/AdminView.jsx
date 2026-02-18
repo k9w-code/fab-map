@@ -161,7 +161,7 @@ const AdminView = ({ onBack, clickedLocation }) => {
         const validColumns = [
             'name', 'prefecture', 'address', 'latitude', 'longitude',
             'fab_available', 'armory_available', 'format_text', 'notes',
-            'status', 'source_type', 'postal_code' // Added postal_code
+            'status', 'source_type', 'postal_code', 'city_town', 'address_line1', 'address_line2'
         ]
 
         const cleanData = {}
