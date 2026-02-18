@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useCallback } from 'react'
 import { Search, Plus, Crosshair, Settings, Navigation2 } from 'lucide-react'
 import Map from './components/Map'
 import StoreBottomSheet from './components/StoreBottomSheet'
@@ -7,7 +8,11 @@ import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { calculateDistance } from './lib/utils'
 
 const PREFECTURES = [
-    // ... (lines 10-17)
+    "すべて", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+    "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+    "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+    "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+    "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
     "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
     "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
 ]
@@ -23,10 +28,8 @@ function App() {
     const [isAdminView, setIsAdminView] = useState(false)
     const [userLocation, setUserLocation] = useState(null)
     const [clickedLocation, setClickedLocation] = useState(null)
-    const [mapRef, setMapRef] = useState(null)
 
     // Admin hash routing
-    // ... (lines 32-39)
     useEffect(() => {
         const handleHashChange = () => {
             setIsAdminView(window.location.hash === '#admin')
@@ -37,7 +40,6 @@ function App() {
     }, [])
 
     // Fetch stores from Supabase
-    // ... (lines 42-62)
     const fetchStores = useCallback(async () => {
         if (!isSupabaseConfigured || !supabase) {
             console.warn('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
@@ -111,7 +113,7 @@ function App() {
 
     const handleJumpToStore = (store) => {
         setSelectedStore(store)
-        setUserLocation([store.longitude, store.latitude]) // Map will react to center change
+        setUserLocation([store.longitude, store.latitude])
         setIsSheetOpen(true)
     }
 
@@ -129,7 +131,6 @@ function App() {
     }
 
     const handleSubmission = async (formData) => {
-        // ... (lines 114-132)
         if (!isSupabaseConfigured || !supabase) {
             alert('データベースが設定されていません。管理者にお問い合わせください。')
             return
@@ -156,10 +157,9 @@ function App() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background overflow-hidden">
+        <div className="flex flex-col h-full bg-background overflow-hidden text-gold-light">
             {/* ===== HEADER ===== */}
             <header className="shrink-0 bg-card/90 backdrop-blur-lg border-b border-gold/20 px-4 py-3 z-30">
-                {/* Title row */}
                 <div className="flex items-center justify-between mb-2">
                     <h1 className="text-lg font-serif text-gold tracking-widest drop-shadow-[0_0_8px_rgba(212,175,55,0.4)]">
                         FaB Map
@@ -177,7 +177,6 @@ function App() {
                     </div>
                 </div>
 
-                {/* Search input */}
                 <div className="relative mb-2">
                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                         <Search size={16} className="text-gold/40" />
@@ -196,7 +195,6 @@ function App() {
                     )}
                 </div>
 
-                {/* Prefecture filter */}
                 <div className="flex items-center gap-2">
                     <select
                         className="flex-1 h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gold-light outline-none focus:border-gold/40 transition-colors"
@@ -209,7 +207,7 @@ function App() {
                 </div>
             </header>
 
-            {/* ===== SEARCH RESULTS / PREFECTURE LIST (Horizontal scroll) ===== */}
+            {/* ===== LIST VIEW (Horizontal scroll) ===== */}
             {(searchTerm || selectedPrefecture !== 'すべて') && filteredStores.length > 0 && (
                 <div className="shrink-0 bg-background/50 backdrop-blur-sm border-b border-gold/10 py-3 z-20">
                     <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar">
@@ -254,7 +252,6 @@ function App() {
                     onMapClick={handleMapClick}
                 />
 
-                {/* Floating Controls */}
                 <button
                     onClick={recenterMap}
                     className="absolute bottom-24 left-4 z-10 w-11 h-11 rounded-full bg-card/80 backdrop-blur-lg border border-gold/20 flex items-center justify-center text-gold hover:bg-card transition-colors active:scale-95"
@@ -270,7 +267,6 @@ function App() {
                 </button>
             </main>
 
-            {/* ===== BOTTOM SHEET ===== */}
             <StoreBottomSheet
                 store={selectedStore}
                 isOpen={isSheetOpen}
@@ -282,7 +278,6 @@ function App() {
                 }}
             />
 
-            {/* ===== SUBMISSION FORM ===== */}
             <SubmissionForm
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
