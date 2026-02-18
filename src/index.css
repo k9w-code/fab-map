@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0a0f;
+  --color-card: #14141f;
+  --color-gold: #d4af37;
+  --color-gold-dark: #b8941e;
+  --color-gold-light: #e8d48b;
+  --font-family-serif: 'Georgia', 'Times New Roman', serif;
+}
+
+/* Full height foundation */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--color-background);
+  color: var(--color-gold-light);
+}
+
+/* Hide scrollbar but keep scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Bottom Sheet transition */
+.bottom-sheet {
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bottom-sheet.open {
+  transform: translateY(0);
+}
+
+/* Overlay transition */
+.sheet-overlay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.sheet-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Full screen modal transition */
+.fullscreen-modal {
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fullscreen-modal.open {
+  transform: translateY(0);
+}
+
+/* MapLibre marker override - ensure clickability */
+.maplibregl-marker {
+  cursor: pointer !important;
+}
+
+/* Gold pin marker */
+.gold-pin {
+  width: 28px;
+  height: 28px;
+  background-color: var(--color-gold);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 12px rgba(212, 175, 55, 0.3);
+  cursor: pointer;
+  pointer-events: auto !important;
+  transition: transform 0.15s ease;
+}
+
+.gold-pin:hover {
+  transform: scale(1.2);
+}
+
+/* Select styling for dark theme */
+select option {
+  background-color: #14141f;
+  color: #e8d48b;
+}
