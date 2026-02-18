@@ -217,6 +217,16 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
         // 1. Full Address & Variations
         if (prefecture && cityTown && normalizedStreet) {
+            // 1-0. Concatenated (No spaces) - often better for Japanese tokenizer
+            // e.g. "東京都千代田区神田須田町1-7-1"
+            queries.push(`${prefecture}${cityTown}${normalizedStreet}`)
+
+            // 1-0-b. Concatenated with merged chome
+            if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
+                const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目') // 1-7-1 -> 1丁目7-1
+                queries.push(`${prefecture}${cityTown}${chomeStreet}`)
+            }
+
             // 1-1. Standard: Prefecture CityTown Street
             queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
             if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${normalizedStreet}`)
