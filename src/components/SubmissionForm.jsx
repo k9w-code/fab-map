@@ -142,34 +142,42 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
             // 4. Construct Queries
 
-            // A. Postal Code (Already added)
-
-            // B. Prefecture + Cleaned Address (Standard)
-            // If we found a core address number, try to find the town name before it
+            // Priority 1: Prefecture + Core Address (Most specific patterns like 1-6-3)
             if (coreAddress) {
                 // Try to construct: Prefecture + Town (extracted) + CoreAddress
                 // Simple approach: Prefecture + Cleaned (which hopefully contains town + core)
+                // If coreAddress is "1-6-3" and cleaned is "Sotokanda 1-6-3", this is good.
                 queries.push(`${prefecture} ${cleaned}`)
             }
 
-            // C. Reverse Order Handling (Google Maps style)
+            // Priority 2: Reverse Order Handling (Google Maps style)
             // e.g. "Building, 1-2-3 Town, Ward" -> "Ward Town 1-2-3"
             if (formData.address.includes(',')) {
                 const parts = formData.address.split(',').map(p => p.trim())
-                // Filter out parts that look like building names (start with uppercase or contain specific keywords)? 
-                // Hard to do reliably. Just join in reverse.
-                // Remove the part that IS the prefecture (we add it back)
-                const reverseParts = parts.filter(p => !p.includes(prefecture) && !p.includes('Japan')).reverse()
+                // Remove the part that IS the prefecture or Japan
+                const reverseParts = parts.filter(p => !p.includes(prefecture) && !p.includes('Japan') && !p.includes('日本')).reverse()
                 queries.push(`${prefecture} ${reverseParts.join(' ')}`)
             }
 
-            // D. Fallback: Prefecture + First meaningful word of cleaned address
+            // Priority 3: Standard Cleaned Address
+            // If we haven't already added it via coreAddress check
+            if (!coreAddress) {
+                queries.push(`${prefecture} ${cleaned}`)
+            }
+
+            // Priority 4: Postal Code (Fallback - Broad area)
+            // Moved to bottom so we don't get "Chiyoda-ku center" (Tokyo Station) prematurely
+            if (postalMatch) {
+                queries.push(postalMatch[0])
+            }
+
+            // Priority 5: Fallback: Prefecture + First meaningful word of cleaned address
             const simpleTown = cleaned.split(/[\s,，]/)[0]
             if (simpleTown && simpleTown.length > 1) {
                 queries.push(`${prefecture} ${simpleTown}`)
             }
 
-            // E. Just Prefecture + Core Address (if extracted)
+            // Priority 6: Just Prefecture + Core Address (if extracted) - as a strong fallback
             if (coreAddress) {
                 queries.push(`${prefecture} ${coreAddress}`)
             }
