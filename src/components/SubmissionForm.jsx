@@ -247,6 +247,12 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             // Priority 0: Specific combination (Best for Nominatim)
             if (prefecture && cityTown && street) {
                 queries.push(`${prefecture} ${cityTown} ${street}`)
+
+                // Try replacing '丁目' with '-' for better matching
+                const normalizedStreet = street.replace(/丁目/g, '-').replace(/-+/g, '-')
+                if (normalizedStreet !== street) {
+                    queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
+                }
             }
 
             if (prefecture && coreAddress && wordParts.length > 0) {
