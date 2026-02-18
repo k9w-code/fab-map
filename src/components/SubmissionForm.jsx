@@ -76,7 +76,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
         setIsGeocoding(true)
 
-        // Helper function to call Nominatim
+        // Nominatim search helper
         const searchLocation = async (q) => {
             console.log('Trying Nominatim search:', q)
             const response = await fetch(
@@ -92,53 +92,101 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
 
         const originalInput = `${formData.prefecture} ${formData.address}`
+        const prefecture = formData.prefecture
 
         try {
-            // 1. Extract Postal Code if exists (e.g. 101-0021)
-            const postalMatch = originalInput.match(/[0-9]{3}-?[0-9]{4}/)
-            const postalCode = postalMatch ? postalMatch[0] : null
+            let queries = []
 
-            // 2. Clean building noise for sub-queries
-            const clean = (str) => str
+            // 1. Postal Code (Strongest signal)
+            const postalMatch = originalInput.match(/[0-9]{3}-?[0-9]{4}/)
+            if (postalMatch) {
+                // Search JUST the postal code first (often returns the town center)
+                queries.push(postalMatch[0])
+            }
+
+            // 2. Extract "Core Address" (e.g., 1-6-3 or 1丁目6-3)
+            // Look for patterns like "1-6-3", "１丁目６−３", "1-6-3"
+            const addressMatch = formData.address.match(/([0-9０-９]+[丁目\-])+([0-9０-９]+[-\u2212－]*)([0-9０-９]+)?/)
+            let coreAddress = ''
+            if (addressMatch) {
+                coreAddress = addressMatch[0]
+            }
+
+            // 3. Clean and normalize address
+            // Remove building names, duplicate prefectures, postal codes
+            let cleaned = formData.address
+
+            // Remove prefecture if it appears in input
+            cleaned = cleaned.replace(new RegExp(prefecture, 'g'), '')
+
+            // Remove "Tokyo" or "Metropolis" context if distinct from prefecture (for safety)
+            cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
+
+            // Remove postal code from address string
+            if (postalMatch) {
+                cleaned = cleaned.replace(postalMatch[0], '')
+            }
+
+            // Remove building/floor info
+            cleaned = cleaned
                 .replace(/[0-9]+F/gi, '')
                 .replace(/[０-９]+階/g, '')
                 .replace(/[0-9]+階/g, '')
                 .replace(/ビル.*$/g, '')
                 .replace(/[0-9]+号室/g, '')
                 .replace(/[\(（].*[\)）]/g, '')
-                .replace(/東京都|千代田区|外神田/g, (m) => m) // keep these but normalize
                 .trim()
 
-            // 3. Smart parsing for Google Maps format (comma separated)
-            let queries = []
+            // Further clean leading/trailing symbols/commas
+            cleaned = cleaned.replace(/^[,，\s]+|[,，\s]+$/g, '')
 
-            // If contains commas, it might be reversed
+            // 4. Construct Queries
+
+            // A. Postal Code (Already added)
+
+            // B. Prefecture + Cleaned Address (Standard)
+            // If we found a core address number, try to find the town name before it
+            if (coreAddress) {
+                // Try to construct: Prefecture + Town (extracted) + CoreAddress
+                // Simple approach: Prefecture + Cleaned (which hopefully contains town + core)
+                queries.push(`${prefecture} ${cleaned}`)
+            }
+
+            // C. Reverse Order Handling (Google Maps style)
+            // e.g. "Building, 1-2-3 Town, Ward" -> "Ward Town 1-2-3"
             if (formData.address.includes(',')) {
                 const parts = formData.address.split(',').map(p => p.trim())
-                // Reversed: [Building, Address, Ward, City, PostCode]
-                // Try joining in reverse order
-                queries.push(parts.reverse().join(' '))
+                // Filter out parts that look like building names (start with uppercase or contain specific keywords)? 
+                // Hard to do reliably. Just join in reverse.
+                // Remove the part that IS the prefecture (we add it back)
+                const reverseParts = parts.filter(p => !p.includes(prefecture) && !p.includes('Japan')).reverse()
+                queries.push(`${prefecture} ${reverseParts.join(' ')}`)
             }
 
-            // Always add a query with postal code if found
-            if (postalCode) {
-                queries.push(postalCode)
+            // D. Fallback: Prefecture + First meaningful word of cleaned address
+            const simpleTown = cleaned.split(/[\s,，]/)[0]
+            if (simpleTown && simpleTown.length > 1) {
+                queries.push(`${prefecture} ${simpleTown}`)
             }
 
-            // Add standard joined query
-            queries.push(`${formData.prefecture}${clean(formData.address)}`)
+            // E. Just Prefecture + Core Address (if extracted)
+            if (coreAddress) {
+                queries.push(`${prefecture} ${coreAddress}`)
+            }
 
-            // Add very simple address (just prefecture + city/ward/area)
-            const simpleAddress = clean(formData.address).split(/[\s　]/)[0]
-            queries.push(`${formData.prefecture}${simpleAddress}`)
-
-            // Unique queries
-            const uniqueQueries = [...new Set(queries)].filter(q => q.length > 2)
+            // Deduplicate and filter empty
+            const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
+            console.log('Generated queries:', uniqueQueries)
 
             let result = null
+            // Execute searches sequentially
             for (const q of uniqueQueries) {
                 const data = await searchLocation(q)
                 if (data && data.length > 0) {
+                    // Check if result is "too broad" (like just "Tokyo")
+                    // If the bounding box is huge, or display_name is short, it might be wrong.
+                    // But Nominatim doesn't give type easily.
+                    // We accept the first hit for now, as we prioritized specific queries.
                     result = data[0]
                     break
                 }
@@ -153,7 +201,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 }))
                 console.log('Geocoding success:', result.display_name)
             } else {
-                alert('住所の特定が難しいため、番地までのシンプルな住所（例：千代田区外神田1-6-3）で試すか、手動でピンを設定してください。')
+                alert('住所の詳細な特定ができませんでした。自動設定された位置が正しいか地図で確認してください。')
             }
         } catch (error) {
             console.error('Geocoding error:', error)
