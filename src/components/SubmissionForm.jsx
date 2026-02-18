@@ -251,12 +251,19 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             // Priority 0: Specific combination (Best for Nominatim)
             // Use NORMALIZED strings to ensure Nominatim understands numbers/hyphens
             if (prefecture && cityTown && normalizedStreet) {
+                // 1. As-is (Normalized)
                 queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
 
-                // Try replacing '丁目' with '-' for better matching
+                // 2. Try replacing '丁目' with '-' (if input had 丁目)
                 const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
                 if (hyphnatedStreet !== normalizedStreet) {
                     queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
+                }
+
+                // 3. Try converting "1-7-1" to "1丁目7-1" (Osm often prefers this)
+                if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
+                    const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
+                    queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
                 }
             }
 
@@ -279,6 +286,11 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
             if (postal_code) {
                 queries.push(postal_code)
+            }
+
+            // Fallback: City + Town only (At least move pin to the neighborhood)
+            if (prefecture && cityTown) {
+                queries.push(`${prefecture} ${cityTown}`)
             }
 
             const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
