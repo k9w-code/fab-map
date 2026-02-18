@@ -3,16 +3,6 @@ import { MessageSquare, Send, User, Pencil, Trash2 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 
 const CommentSection = ({ storeId }) => {
-    const [comments, setComments] = useState([])
-    const [isLoading, setIsLoading] = useState(false)
-    const [showForm, setShowForm] = useState(false)
-    const [isSubmitting, setIsSubmitting] = useState(false)
-    const [formData, setFormData] = useState({ name: '', content: '' })
-    const [submitSuccess, setSubmitSuccess] = useState(false)
-    const [editingComment, setEditingComment] = useState(null) // comment being edited
-    const [editContent, setEditContent] = useState('')
-    const mySubmitterId = getSubmitterId()
-
     // Get or create anonymous submitter ID
     const getSubmitterId = () => {
         let id = localStorage.getItem('fab_submitter_id')
@@ -27,6 +17,16 @@ const CommentSection = ({ storeId }) => {
         }
         return id
     }
+
+    const [comments, setComments] = useState([])
+    const [isLoading, setIsLoading] = useState(false)
+    const [showForm, setShowForm] = useState(false)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [formData, setFormData] = useState({ name: '', content: '' })
+    const [submitSuccess, setSubmitSuccess] = useState(false)
+    const [editingComment, setEditingComment] = useState(null) // comment being edited
+    const [editContent, setEditContent] = useState('')
+    const mySubmitterId = getSubmitterId()
 
     // Fetch approved comments
     const fetchComments = async () => {

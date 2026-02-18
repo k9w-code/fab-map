@@ -33,7 +33,11 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
     useEffect(() => {
         let sid = localStorage.getItem('fab_map_submitter_id')
         if (!sid) {
-            sid = crypto.randomUUID()
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                sid = crypto.randomUUID()
+            } else {
+                sid = Date.now().toString(36) + Math.random().toString(36).substring(2)
+            }
             localStorage.setItem('fab_map_submitter_id', sid)
         }
         setFormData(prev => ({ ...prev, submitter_id: sid }))
