@@ -1,10 +1,12 @@
 import React, { useRef, useEffect } from 'react'
-import { X, MapPin, ExternalLink, Edit3 } from 'lucide-react'
+import { X, MapPin, ExternalLink, Edit3, Heart } from 'lucide-react'
+import CommentSection from './CommentSection'
 
-const StoreBottomSheet = ({ store, isOpen, onClose, onEdit }) => {
+const StoreBottomSheet = ({ store, isOpen, onClose, onEdit, favorites = [], onToggleFavorite }) => {
     const sheetRef = useRef(null)
     const startY = useRef(0)
     const currentY = useRef(0)
+    const isFavorite = store ? favorites.includes(store.id) : false
 
     // Swipe to close
     const handleTouchStart = (e) => {
@@ -44,7 +46,7 @@ const StoreBottomSheet = ({ store, isOpen, onClose, onEdit }) => {
             {/* Sheet */}
             <div
                 ref={sheetRef}
-                className={`bottom-sheet fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-gold/30 rounded-t-3xl max-h-[60vh] overflow-y-auto ${isOpen ? 'open' : ''}`}
+                className={`bottom-sheet fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-gold/30 rounded-t-3xl max-h-[80vh] overflow-y-auto ${isOpen ? 'open' : ''}`}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
@@ -64,12 +66,22 @@ const StoreBottomSheet = ({ store, isOpen, onClose, onEdit }) => {
                                 <span>{store.prefecture} {store.address}</span>
                             </div>
                         </div>
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-white/10 rounded-full transition-colors shrink-0"
-                        >
-                            <X size={20} className="text-gold/60" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => onToggleFavorite && onToggleFavorite(store.id)}
+                                className={`p-2 rounded-full transition-colors ${isFavorite ? 'bg-rose-500/20 text-rose-400' : 'hover:bg-white/10 text-gold/40'
+                                    }`}
+                                title={isFavorite ? 'お気に入り解除' : 'お気に入りに追加'}
+                            >
+                                <Heart size={18} className={isFavorite ? 'fill-rose-400' : ''} />
+                            </button>
+                            <button
+                                onClick={onClose}
+                                className="p-2 hover:bg-white/10 rounded-full transition-colors shrink-0"
+                            >
+                                <X size={20} className="text-gold/60" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Status cards */}
@@ -122,6 +134,9 @@ const StoreBottomSheet = ({ store, isOpen, onClose, onEdit }) => {
                             情報を修正
                         </button>
                     </div>
+
+                    {/* Comments */}
+                    <CommentSection storeId={store.id} />
                 </div>
             </div>
         </>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, Crosshair, Settings, Navigation2 } from 'lucide-react'
+import { Search, Plus, Crosshair, Settings, Navigation2, Heart } from 'lucide-react'
 import Map from './components/Map'
 import StoreBottomSheet from './components/StoreBottomSheet'
 import SubmissionForm from './components/SubmissionForm'
@@ -28,6 +28,30 @@ function App() {
     const [isAdminView, setIsAdminView] = useState(false)
     const [userLocation, setUserLocation] = useState(null)
     const [clickedLocation, setClickedLocation] = useState(null)
+
+    // Favorites (localStorage)
+    const [favorites, setFavorites] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('fab_favorites') || '[]')
+        } catch { return [] }
+    })
+
+    const toggleFavorite = useCallback((storeId) => {
+        setFavorites(prev => {
+            let next
+            if (prev.includes(storeId)) {
+                next = prev.filter(id => id !== storeId)
+            } else {
+                if (prev.length >= 3) {
+                    alert('お気に入りは最大3件までです。\n既存のお気に入りを解除してから追加してください。')
+                    return prev
+                }
+                next = [...prev, storeId]
+            }
+            localStorage.setItem('fab_favorites', JSON.stringify(next))
+            return next
+        })
+    }, [])
 
     // Admin hash routing
     useEffect(() => {
@@ -236,6 +260,37 @@ function App() {
                 </div>
             </header>
 
+            {/* ===== FAVORITES (Always visible) ===== */}
+            {favorites.length > 0 && (
+                <div className="shrink-0 bg-gradient-to-b from-gold/5 to-transparent border-b border-gold/10 py-2.5 z-20">
+                    <div className="flex items-center gap-1.5 px-4 mb-2">
+                        <Heart size={12} className="text-rose-400 fill-rose-400" />
+                        <span className="text-[10px] text-gold/60 font-semibold tracking-wider">お気に入り</span>
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto px-4 no-scrollbar">
+                        {favorites.map(fId => {
+                            const fStore = stores.find(s => s.id === fId)
+                            if (!fStore) return null
+                            return (
+                                <button
+                                    key={fStore.id}
+                                    onClick={() => handleJumpToStore(fStore)}
+                                    className="shrink-0 w-44 p-2.5 rounded-xl bg-card border border-gold/30 flex flex-col items-start gap-1 active:scale-95 transition-all text-left group hover:border-gold/50 relative"
+                                >
+                                    <Heart size={12} className="absolute top-2 right-2 text-rose-400 fill-rose-400" />
+                                    <span className="text-xs font-bold text-gold truncate w-full pr-5 group-hover:text-gold-light">
+                                        {fStore.name}
+                                    </span>
+                                    <span className="text-[10px] text-neutral-400 truncate w-full">
+                                        {fStore.prefecture}
+                                    </span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* ===== LIST VIEW (Horizontal scroll) ===== */}
             {(searchTerm || selectedPrefecture !== 'すべて') && filteredStores.length > 0 && (
                 <div className="shrink-0 bg-background/50 backdrop-blur-sm border-b border-gold/10 py-3 z-20">
@@ -305,6 +360,8 @@ function App() {
                     setClickedLocation({ lat: store.latitude, lng: store.longitude })
                     setIsFormOpen(true)
                 }}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
             />
 
             <SubmissionForm

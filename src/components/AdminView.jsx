@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Check, X, ArrowLeft, Trash2, Edit2, Lock } from 'lucide-react'
+import { Check, X, ArrowLeft, Trash2, Edit2, Lock, MessageSquare } from 'lucide-react'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { supabase } from '../lib/supabaseClient'
@@ -8,7 +8,7 @@ import SubmissionForm from './SubmissionForm'
 const AdminView = ({ onBack, clickedLocation }) => {
     const [stores, setStores] = useState([])
     const [isLoading, setIsLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState('pending') // 'pending' | 'approved'
+    const [activeTab, setActiveTab] = useState('pending') // 'pending' | 'approved' | 'comments'
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [password, setPassword] = useState('')
     const [editingStore, setEditingStore] = useState(null)
@@ -16,6 +16,7 @@ const AdminView = ({ onBack, clickedLocation }) => {
     const [itemToDelete, setItemToDelete] = useState(null)
     const [isPickingLocation, setIsPickingLocation] = useState(false)
     const [blockedIds, setBlockedIds] = useState([])
+    const [pendingComments, setPendingComments] = useState([])
 
     // Load blocked IDs
     useEffect(() => {
@@ -107,9 +108,57 @@ const AdminView = ({ onBack, clickedLocation }) => {
 
     useEffect(() => {
         if (isAuthenticated) {
-            fetchData()
+            if (activeTab === 'comments') {
+                fetchComments()
+            } else {
+                fetchData()
+            }
         }
     }, [isAuthenticated, activeTab])
+
+    // Fetch pending comments
+    const fetchComments = async () => {
+        setIsLoading(true)
+        const { data, error } = await supabase
+            .from('comments')
+            .select('*, stores(name)')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+
+        if (!error && data) {
+            setPendingComments(data)
+        }
+        setIsLoading(false)
+    }
+
+    // Approve comment
+    const handleApproveComment = async (commentId) => {
+        const { error } = await supabase
+            .from('comments')
+            .update({ status: 'approved' })
+            .eq('id', commentId)
+
+        if (error) {
+            alert('承認に失敗しました: ' + error.message)
+        } else {
+            fetchComments()
+        }
+    }
+
+    // Delete comment
+    const handleDeleteComment = async (commentId) => {
+        if (!window.confirm('このコメントを削除しますか？')) return
+        const { error } = await supabase
+            .from('comments')
+            .delete()
+            .eq('id', commentId)
+
+        if (error) {
+            alert('削除に失敗しました: ' + error.message)
+        } else {
+            fetchComments()
+        }
+    }
 
     // GSI Geocoding helper (same logic as SubmissionForm)
     const geocodeWithGSI = async (prefecture, cityTown, street) => {
@@ -348,6 +397,14 @@ const AdminView = ({ onBack, clickedLocation }) => {
                         >
                             公開済み
                         </button>
+                        <button
+                            onClick={() => setActiveTab('comments')}
+                            className={`px-4 py-2 rounded-md text-sm transition-all flex items-center gap-1 ${activeTab === 'comments' ? 'bg-gold text-black font-bold' : 'text-gold/50 hover:text-gold'
+                                }`}
+                        >
+                            <MessageSquare size={14} />
+                            コメント
+                        </button>
                     </div>
                 </div>
 
@@ -355,6 +412,50 @@ const AdminView = ({ onBack, clickedLocation }) => {
                     <div className="flex justify-center py-20">
                         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-gold"></div>
                     </div>
+                ) : activeTab === 'comments' ? (
+                    /* ===== Comments Management ===== */
+                    pendingComments.length === 0 ? (
+                        <div className="text-center py-20 bg-white/5 rounded-2xl border border-dashed border-white/10">
+                            <MessageSquare size={32} className="mx-auto text-neutral-600 mb-3" />
+                            <p className="text-neutral-500">承認待ちのコメントはありません。</p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4">
+                            {pendingComments.map(comment => (
+                                <Card key={comment.id} className="p-4 bg-card/30 border-gold/10 hover:border-gold/30 transition-all">
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <p className="text-xs text-gold/60 mb-1">
+                                                    店舗: <span className="text-gold">{comment.stores?.name || '不明'}</span>
+                                                </p>
+                                                <p className="text-[11px] text-neutral-400">
+                                                    投稿者: {comment.commenter_name || '匿名'} ・ {new Date(comment.created_at).toLocaleDateString('ja-JP')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="p-3 rounded-lg bg-white/5 border border-white/5">
+                                            <p className="text-sm text-gold-light/80 whitespace-pre-wrap">{comment.content}</p>
+                                        </div>
+                                        <div className="flex gap-2 justify-end">
+                                            <button
+                                                onClick={() => handleDeleteComment(comment.id)}
+                                                className="px-3 py-1.5 rounded-md bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-colors flex items-center gap-1"
+                                            >
+                                                <Trash2 size={12} /> 削除
+                                            </button>
+                                            <button
+                                                onClick={() => handleApproveComment(comment.id)}
+                                                className="px-3 py-1.5 rounded-md bg-green-500/10 text-green-400 text-xs hover:bg-green-500/20 transition-colors flex items-center gap-1"
+                                            >
+                                                <Check size={12} /> 承認
+                                            </button>
+                                        </div>
+                                    </div>
+                                </Card>
+                            ))}
+                        </div>
+                    )
                 ) : stores.length === 0 ? (
                     <div className="text-center py-20 bg-white/5 rounded-2xl border border-dashed border-white/10">
                         <p className="text-neutral-500">

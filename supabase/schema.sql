@@ -71,3 +71,52 @@ using (true);
 -- ポリシーと合わせて、全データが読み取り可能になります。
 -- 管理画面のみで pending データを閲覧する場合は、このポリシーの代わりに
 -- Supabase Auth を使った認証ユーザー向けポリシーの検討をお勧めします。
+
+-- ============================================================
+-- comments テーブル（ユーザーコメント機能）
+-- ============================================================
+
+-- ⚠️ 以下のSQLをSupabaseダッシュボードのSQL Editorで実行してください
+
+create table comments (
+  id uuid default gen_random_uuid() primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  commenter_name text default '匿名',
+  content text not null,
+  status text default 'pending', -- 'pending' or 'approved'
+  submitter_id text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- インデックス
+create index idx_comments_store_id on comments(store_id);
+create index idx_comments_status on comments(status);
+
+-- RLS
+alter table comments enable row level security;
+
+-- 承認済みコメントの読み取りを許可
+create policy "Allow read approved comments"
+on comments for select
+using (status = 'approved');
+
+-- 全コメントの読み取り（管理画面用）
+create policy "Allow read all comments"
+on comments for select
+using (true);
+
+-- 誰でもコメント投稿可能
+create policy "Allow insert comments"
+on comments for insert
+with check (true);
+
+-- コメントの更新を許可（管理画面での承認用）
+create policy "Allow update comments"
+on comments for update
+using (true)
+with check (true);
+
+-- コメントの削除を許可
+create policy "Allow delete comments"
+on comments for delete
+using (true);
