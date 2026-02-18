@@ -123,32 +123,87 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const address = formData.address
         const postalCode = formData.postalCode
 
+        // Utility to convert full-width to half-width
+        const toHalfWidth = (str) => {
+            return str.replace(/[！-～]/g, (s) => {
+                return String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
+            }).replace(/　/g, ' ')
+        }
+
         try {
             let queries = []
 
-            // Priority 1: Prefecture + Address (if core address exists)
-            // e.g. "東京都 千代田区外神田1-6-3"
-            if (prefecture && address) {
-                // Clean up common noise
-                const cleanAddress = address
-                    .replace(/[0-9]+F/gi, '')
-                    .replace(/ビル.*$/g, '')
-                    .trim()
-                queries.push(`${prefecture} ${cleanAddress}`)
+            // Normalize input address
+            // 1. Convert to half-width (１丁目 -> 1丁目)
+            let normalizedAddress = toHalfWidth(address)
+
+            // 2. Extract "Core Address" (e.g., 1-6-3 or 1-6-3)
+            // Look for patterns like "1-6-3", "1丁目6-3"
+            const addressMatch = normalizedAddress.match(/([0-9]+[丁目\-])+([0-9]+[-\u2212－]*)([0-9]+)?/)
+            let coreAddress = ''
+            if (addressMatch) {
+                coreAddress = addressMatch[0]
             }
 
-            // Priority 2: Postal Code + Address (Without building info)
-            // If user entered postal code, use it!
-            if (postalCode && address) {
-                const cleanAddress = address
-                    .replace(/[0-9]+F/gi, '')
-                    .replace(/ビル.*$/g, '')
-                    .trim()
-                // Nominatim often understands "101-0021 1-6-3"
-                queries.push(`${postalCode} ${cleanAddress}`)
+            // 3. Clean and normalize address
+            // Remove building names carefully. Don't use .*$ as it eats the rest of the line!
+            let cleaned = normalizedAddress
+
+            // Remove prefecture if it appears in input
+            cleaned = cleaned.replace(new RegExp(prefecture, 'g'), '')
+
+            // Remove "Tokyo" or "Japan"
+            cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
+
+            // Remove postal code from address string if present
+            if (address.match(/[0-9]{3}-?[0-9]{4}/)) {
+                cleaned = cleaned.replace(/[0-9]{3}-?[0-9]{4}/, '')
             }
 
-            // Priority 3: Just Postal Code (Fallback)
+            // Remove building info patterns
+            // Just remove "Build name" + "Floor" if they look like specific chunks
+            // e.g. "Kumaya Bldg 3F" -> remove
+            cleaned = cleaned
+                .replace(/[0-9]+F/gi, '') // 3F
+                .replace(/No\.[0-9]+/gi, '') // No.123
+                .replace(/\S+ビル/g, '') // Word ending in 'Building'
+                .replace(/ビル[ \t]*[0-9]*/g, '') // 'Building 3'
+                .replace(/[0-9]+階/g, '')
+                .replace(/[0-9]+号室/g, '')
+                .replace(/[\(（].*[\)）]/g, '')
+                .trim()
+
+            // Further clean leading/trailing symbols/commas
+            cleaned = cleaned.replace(/^[,，\s]+|[,，\s]+$/g, '')
+
+            // 4. Construct Queries
+
+            // Priority 0: Postal Code + Core Address (The content-match king)
+            // e.g. "101-0021 1-6-3" -> Very high chance of success
+            if (postalCode && coreAddress) {
+                queries.push(`${postalCode} ${coreAddress}`)
+            }
+
+            // Priority 1: Prefecture + Core Address + Cleaned Remainder (Town name?)
+            // We need the town name (Sotokanda). 'cleaned' might still have it.
+            if (prefecture && cleaned) {
+                queries.push(`${prefecture} ${cleaned}`)
+            }
+
+            // Priority 2: Reverse Order Handling (Google Maps style)
+            if (formData.address.includes(',')) {
+                const parts = normalizedAddress.split(',').map(p => p.trim())
+                // Reversed parts, excluding prefecture/Japan
+                const reverseParts = parts.filter(p => !p.includes(prefecture) && !p.includes('Japan') && !p.includes('日本')).reverse()
+                queries.push(`${prefecture} ${reverseParts.join(' ')}`)
+            }
+
+            // Priority 3: Postal Code + Cleaned Address
+            if (postalCode && cleaned) {
+                queries.push(`${postalCode} ${cleaned}`)
+            }
+
+            // Priority 4: Just Postal Code (Fallback)
             if (postalCode) {
                 queries.push(postalCode)
             }
