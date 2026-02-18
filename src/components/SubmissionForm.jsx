@@ -165,15 +165,11 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
     }
 
-    const handleGeocode = async () => {
-        if (!formData.prefecture && !formData.postal_code) {
-            alert('郵便番号、または都道府県と住所を入力してください')
-            return
-        }
+    // Shared Geocoding Logic
+    // This allows us to use the same smart query logic in both manual (button) and auto (submit) flows
+    const performGeocoding = async (params) => {
+        const { prefecture, cityTown, street, postal_code, address_line2 } = params
 
-        setIsGeocoding(true)
-
-        // Nominatim search helper
         const searchLocation = async (q) => {
             console.log('Trying Nominatim search:', q)
             const response = await fetch(
@@ -188,12 +184,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             return await response.json()
         }
 
-        const prefecture = formData.prefecture
-        const cityTown = formData.city_town || ''
-        const street = formData.address_line1 || ''
-        const address = `${cityTown} ${street}`.trim() // Use space between city and street
-        const postal_code = formData.postal_code
-
         const toHalfWidth = (str) => {
             if (!str) return ''
             return str.replace(/[！-～]/g, (s) => {
@@ -201,109 +191,91 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             }).replace(/　/g, ' ')
         }
 
-        try {
-            let queries = []
+        let queries = []
 
-            // Normalize input components first
-            const normalizedPrefecture = toHalfWidth(prefecture)
-            const normalizedCity = toHalfWidth(cityTown)
-            const normalizedStreet = toHalfWidth(street)
-            const normalizedAddress = toHalfWidth(address)
+        // Helper to split City/Ward from Town
+        // e.g. "千代田区神田須田町" -> "千代田区 神田須田町"
+        const splitCityTown = (ct) => {
+            if (!ct) return ct
+            const match = ct.match(/^(.+?[区市郡])(.+)$/)
+            if (match) return `${match[1]} ${match[2]}`
+            return ct
+        }
+        const spacedCityTown = splitCityTown(cityTown)
+        const normalizedStreet = toHalfWidth(street)
 
-            // Extract "Core Address"
-            const addressMatch = normalizedAddress.match(/([0-9]+[丁目\-])+([0-9]+[-\u2212－]*)([0-9]+)?/)
-            let coreAddress = ''
-            if (addressMatch) {
-                coreAddress = addressMatch[0]
-            }
-
-            let cleaned = normalizedAddress
-            cleaned = cleaned.replace(new RegExp(normalizedPrefecture, 'g'), '')
-            cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
-
-            if (postal_code && cleaned.includes(postal_code)) {
-                cleaned = cleaned.replace(postal_code, '')
-            }
-            if (address.match(/[0-9]{3}-?[0-9]{4}/)) {
-                cleaned = cleaned.replace(/[0-9]{3}-?[0-9]{4}/, '')
-            }
-
-            // Remove building info from search
-            cleaned = cleaned
+        // Prepare Building Name (remove floor info)
+        let buildingName = ''
+        if (address_line2) {
+            buildingName = toHalfWidth(address_line2)
                 .replace(/[0-9]+F/gi, '')
                 .replace(/No\.[0-9]+/gi, '')
-                .replace(/\S+ビル/g, '')
-                .replace(/ビル[ \t]*[0-9]*/g, '')
                 .replace(/[0-9]+階/g, '')
                 .replace(/[0-9]+号室/g, '')
-                .replace(/[\(（].*[\)）]/g, '')
                 .trim()
+        }
 
-            cleaned = cleaned.replace(/^[,，\s]+|[,，\s]+$/g, '')
+        // 1. Full Address & Variations
+        if (prefecture && cityTown && normalizedStreet) {
+            queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
+            if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${normalizedStreet}`)
 
-            const wordParts = cleaned.split(/[\s,，]+/).filter(w =>
-                w &&
-                !w.includes(coreAddress) &&
-                w !== postal_code &&
-                !w.match(/^[0-9-]+$/)
-            )
-
-            // Priority 0: Specific combination (Best for Nominatim)
-            // Use NORMALIZED strings to ensure Nominatim understands numbers/hyphens
-            if (prefecture && cityTown && normalizedStreet) {
-                // 1. As-is (Normalized)
-                queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
-
-                // 2. Try replacing '丁目' with '-' (if input had 丁目)
-                const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
-                if (hyphnatedStreet !== normalizedStreet) {
-                    queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
-                }
-
-                // 3. Try converting "1-7-1" to "1丁目7-1" (Osm often prefers this)
-                if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
-                    const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
-                    queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
-                }
+            const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
+            if (hyphnatedStreet !== normalizedStreet) {
+                queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
+                if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${hyphnatedStreet}`)
             }
 
-            if (prefecture && coreAddress && wordParts.length > 0) {
-                queries.push(`${prefecture} ${wordParts.join(' ')} ${coreAddress}`)
-                queries.push(`${prefecture} ${wordParts.reverse().join(' ')} ${coreAddress}`)
+            if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
+                const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
+                queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
+                if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${chomeStreet}`)
             }
+        }
 
-            if (postal_code && coreAddress) {
-                queries.push(`${postal_code} ${coreAddress}`)
+        // 2. Building Name
+        if (prefecture && cityTown && buildingName) {
+            queries.push(`${prefecture} ${cityTown} ${buildingName}`)
+            if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${buildingName}`)
+        }
+
+        // 3. Fallback: City/Town
+        if (prefecture && cityTown) {
+            queries.push(`${prefecture} ${cityTown}`)
+            if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown}`)
+        }
+        // 4. Fallback: Postal Code
+        if (postal_code) queries.push(postal_code)
+
+        // Execute Search
+        const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
+        console.log('Generated queries:', uniqueQueries)
+
+        for (const q of uniqueQueries) {
+            const data = await searchLocation(q)
+            if (data && data.length > 0) {
+                return data[0]
             }
+        }
+        return null
+    }
 
-            if (prefecture && coreAddress && wordParts.length === 0) {
-                queries.push(`${prefecture} ${coreAddress}`)
-            }
+    const handleGeocode = async () => {
+        if (!formData.prefecture && !formData.postal_code) {
+            alert('郵便番号、または都道府県と住所を入力してください')
+            return
+        }
 
-            if (prefecture && cleaned) {
-                queries.push(`${prefecture} ${cleaned}`)
-            }
+        setIsGeocoding(true)
 
-            if (postal_code) {
-                queries.push(postal_code)
-            }
-
-            // Fallback: City + Town only (At least move pin to the neighborhood)
-            if (prefecture && cityTown) {
-                queries.push(`${prefecture} ${cityTown}`)
-            }
-
-            const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
-            console.log('Generated queries:', uniqueQueries)
-
-            let result = null
-            for (const q of uniqueQueries) {
-                const data = await searchLocation(q)
-                if (data && data.length > 0) {
-                    result = data[0]
-                    break
-                }
-            }
+        try {
+            const result = await performGeocoding({
+                prefecture: formData.prefecture,
+                cityTown: formData.city_town || '',
+                street: formData.address_line1 || '',
+                postal_code: formData.postal_code,
+                address_line2: formData.address_line2
+            })
 
             if (result) {
                 const { lat, lon } = result
@@ -342,68 +314,16 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             Math.abs(formData.longitude - 139.767) < 0.0001
 
         if (isDefaultLocation && formData.prefecture) {
-            // Re-use logic for geocoding
-            // Since handleGeocode updates state, we need a separate logic or reuse it carefully.
-            // Here we copy the core logic for the submission flow to ensure we get values *before* submitting.
-
-            const prefecture = formData.prefecture
-            const cityTown = formData.city_town || ''
-            const street = formData.address_line1 || ''
-            const address = `${cityTown} ${street}`.trim()
-            const postal_code = formData.postal_code
-
-            // Normalize function
-            const toHalfWidth = (str) => {
-                if (!str) return ''
-                return str.replace(/[！-～]/g, (s) => {
-                    return String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
-                }).replace(/　/g, ' ')
-            }
-
-            // Simple Notification
             const confirmAuto = window.confirm('位置情報が初期値（東京駅）のままです。入力された住所から自動設定してもよろしいですか？\nキャンセルを選ぶと、現在の位置（東京駅）で登録されます。')
             if (confirmAuto) {
                 try {
-                    // Quick Search Helper
-                    const searchLocation = async (q) => {
-                        const response = await fetch(
-                            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
-                            { headers: { 'Accept-Language': 'ja', 'User-Agent': 'FaB-Map-App' } }
-                        )
-                        return await response.json()
-                    }
-
-                    let queries = []
-                    const normalizedPrefecture = toHalfWidth(prefecture)
-                    const normalizedCity = toHalfWidth(cityTown)
-                    const normalizedStreet = toHalfWidth(street)
-
-                    // 1. Full Address
-                    if (prefecture && cityTown && normalizedStreet) {
-                        queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
-                        // Chome fallback
-                        const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
-                        if (hyphnatedStreet !== normalizedStreet) queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
-                        if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
-                            const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
-                            queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
-                        }
-                    }
-                    // 2. Fallback: City/Town
-                    if (prefecture && cityTown) {
-                        queries.push(`${prefecture} ${cityTown}`)
-                    }
-                    // 3. Fallback: Postal Code
-                    if (postal_code) queries.push(postal_code)
-
-                    let result = null
-                    for (const q of queries) {
-                        const data = await searchLocation(q)
-                        if (data && data.length > 0) {
-                            result = data[0]
-                            break
-                        }
-                    }
+                    const result = await performGeocoding({
+                        prefecture: formData.prefecture,
+                        cityTown: formData.city_town || '',
+                        street: formData.address_line1 || '',
+                        postal_code: formData.postal_code,
+                        address_line2: formData.address_line2
+                    })
 
                     if (result) {
                         finalLatitude = parseFloat(result.lat)
