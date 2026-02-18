@@ -6,7 +6,7 @@ const StoreBottomSheet = ({ store, isOpen, onClose, onEdit, favorites = [], onTo
     const sheetRef = useRef(null)
     const startY = useRef(0)
     const currentY = useRef(0)
-    const isFavorite = store ? favorites.includes(store.id) : false
+    const isFavorite = store && Array.isArray(favorites) ? favorites.includes(store.id) : false
 
     // Swipe to close
     const handleTouchStart = (e) => {

@@ -17,7 +17,12 @@ const CommentSection = ({ storeId }) => {
     const getSubmitterId = () => {
         let id = localStorage.getItem('fab_submitter_id')
         if (!id) {
-            id = crypto.randomUUID()
+            // Fallback for environments where crypto.randomUUID is not available
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                id = crypto.randomUUID()
+            } else {
+                id = Date.now().toString(36) + Math.random().toString(36).substring(2)
+            }
             localStorage.setItem('fab_submitter_id', id)
         }
         return id
