@@ -195,6 +195,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const postal_code = formData.postal_code
 
         const toHalfWidth = (str) => {
+            if (!str) return ''
             return str.replace(/[！-～]/g, (s) => {
                 return String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
             }).replace(/　/g, ' ')
@@ -203,8 +204,11 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         try {
             let queries = []
 
-            // Normalize input address
-            let normalizedAddress = toHalfWidth(address)
+            // Normalize input components first
+            const normalizedPrefecture = toHalfWidth(prefecture)
+            const normalizedCity = toHalfWidth(cityTown)
+            const normalizedStreet = toHalfWidth(street)
+            const normalizedAddress = toHalfWidth(address)
 
             // Extract "Core Address"
             const addressMatch = normalizedAddress.match(/([0-9]+[丁目\-])+([0-9]+[-\u2212－]*)([0-9]+)?/)
@@ -214,7 +218,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             }
 
             let cleaned = normalizedAddress
-            cleaned = cleaned.replace(new RegExp(prefecture, 'g'), '')
+            cleaned = cleaned.replace(new RegExp(normalizedPrefecture, 'g'), '')
             cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
 
             if (postal_code && cleaned.includes(postal_code)) {
@@ -245,13 +249,14 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             )
 
             // Priority 0: Specific combination (Best for Nominatim)
-            if (prefecture && cityTown && street) {
-                queries.push(`${prefecture} ${cityTown} ${street}`)
+            // Use NORMALIZED strings to ensure Nominatim understands numbers/hyphens
+            if (prefecture && cityTown && normalizedStreet) {
+                queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
 
                 // Try replacing '丁目' with '-' for better matching
-                const normalizedStreet = street.replace(/丁目/g, '-').replace(/-+/g, '-')
-                if (normalizedStreet !== street) {
-                    queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
+                const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
+                if (hyphnatedStreet !== normalizedStreet) {
+                    queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
                 }
             }
 
@@ -426,6 +431,9 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                         )}
                                     </button>
                                 </div>
+                                <p className="text-[10px] text-neutral-500 mt-1">
+                                    例: 1-2-3 ※すべて半角数字とハイフンで入力してください
+                                </p>
                             </div>
 
                             {/* Address Line 2 */}
