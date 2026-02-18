@@ -46,3 +46,28 @@ using (status = 'approved');
 create policy "Allow anonymous submissions"
 on stores for insert
 with check (true);
+
+-- ⚠️ 以下のポリシーはSupabaseダッシュボードのSQL Editorで手動実行が必要です
+-- ※ git push しただけでは反映されません
+
+-- 全ユーザーが全データを更新できるポリシー
+-- （管理画面のパスワード保護 + Vercel Serverless Function によるセキュリティで保護）
+create policy "Allow update access"
+on stores for update
+using (true)
+with check (true);
+
+-- 全ユーザーが全データを削除できるポリシー
+create policy "Allow delete access"
+on stores for delete
+using (true);
+
+-- ⚠️ 既存のSELECTポリシーは承認済みデータのみを返します。
+-- 管理画面でpendingデータを表示するには、以下のポリシーも追加が必要です:
+create policy "Allow read all stores"
+on stores for select
+using (true);
+-- 注意: このポリシーを追加すると、既存の "Allow public read-only access for approved stores"
+-- ポリシーと合わせて、全データが読み取り可能になります。
+-- 管理画面のみで pending データを閲覧する場合は、このポリシーの代わりに
+-- Supabase Auth を使った認証ユーザー向けポリシーの検討をお勧めします。

@@ -63,14 +63,26 @@ const AdminView = ({ onBack, clickedLocation }) => {
         }
     }, [clickedLocation, isPickingLocation])
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault()
-        const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123'
-        if (password === adminPass) {
-            setIsAuthenticated(true)
-            sessionStorage.setItem('admin_auth', 'true')
-        } else {
-            alert('パスワードが違います')
+        try {
+            const response = await fetch('/api/admin-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            })
+            const data = await response.json()
+
+            if (data.success) {
+                setIsAuthenticated(true)
+                sessionStorage.setItem('admin_auth', 'true')
+                sessionStorage.setItem('admin_token', data.token)
+            } else {
+                alert(data.error || 'パスワードが違います')
+            }
+        } catch (err) {
+            console.error('Login error:', err)
+            alert('ログインに失敗しました。サーバーに接続できません。')
         }
     }
 
