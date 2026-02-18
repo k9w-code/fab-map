@@ -123,7 +123,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const address = formData.address
         const postalCode = formData.postalCode
 
-        // Utility to convert full-width to half-width
         const toHalfWidth = (str) => {
             return str.replace(/[！-～]/g, (s) => {
                 return String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
@@ -156,6 +155,9 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             cleaned = cleaned.replace(/東京都|Japan|日本/g, '')
 
             // Remove postal code from address string if present
+            if (postalCode && cleaned.includes(postalCode)) {
+                cleaned = cleaned.replace(postalCode, '')
+            }
             if (address.match(/[0-9]{3}-?[0-9]{4}/)) {
                 cleaned = cleaned.replace(/[0-9]{3}-?[0-9]{4}/, '')
             }
@@ -178,19 +180,25 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
             // 4. Construct Queries
 
-            // Priority 0: Postal Code + Core Address (The content-match king)
+            // Priority 0: Prefecture + Core Address (Specific!)
+            // e.g. "東京都 1-6-3" -> Should hit Sotokanda 1-6-3
+            if (prefecture && coreAddress) {
+                queries.push(`${prefecture} ${coreAddress}`)
+            }
+
+            // Priority 1: Postal Code + Core Address (The content-match king)
             // e.g. "101-0021 1-6-3" -> Very high chance of success
             if (postalCode && coreAddress) {
                 queries.push(`${postalCode} ${coreAddress}`)
             }
 
-            // Priority 1: Prefecture + Core Address + Cleaned Remainder (Town name?)
+            // Priority 2: Prefecture + Cleaned Address (Standard)
             // We need the town name (Sotokanda). 'cleaned' might still have it.
             if (prefecture && cleaned) {
                 queries.push(`${prefecture} ${cleaned}`)
             }
 
-            // Priority 2: Reverse Order Handling (Google Maps style)
+            // Priority 3: Reverse Order Handling (Google Maps style)
             if (formData.address.includes(',')) {
                 const parts = normalizedAddress.split(',').map(p => p.trim())
                 // Reversed parts, excluding prefecture/Japan
@@ -198,12 +206,12 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 queries.push(`${prefecture} ${reverseParts.join(' ')}`)
             }
 
-            // Priority 3: Postal Code + Cleaned Address
+            // Priority 4: Postal Code + Cleaned Address
             if (postalCode && cleaned) {
                 queries.push(`${postalCode} ${cleaned}`)
             }
 
-            // Priority 4: Just Postal Code (Fallback)
+            // Priority 5: Just Postal Code (Fallback)
             if (postalCode) {
                 queries.push(postalCode)
             }
