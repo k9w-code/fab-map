@@ -5,7 +5,7 @@ import { Card } from './ui/Card'
 import { supabase } from '../lib/supabaseClient'
 import SubmissionForm from './SubmissionForm'
 
-const AdminView = ({ onBack }) => {
+const AdminView = ({ onBack, clickedLocation }) => {
     const [stores, setStores] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('pending') // 'pending' | 'approved'
