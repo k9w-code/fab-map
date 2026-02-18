@@ -16,7 +16,8 @@ const AdminView = ({ onBack, clickedLocation }) => {
     const [itemToDelete, setItemToDelete] = useState(null)
     const [isPickingLocation, setIsPickingLocation] = useState(false)
     const [blockedIds, setBlockedIds] = useState([])
-    const [pendingComments, setPendingComments] = useState([])
+    const [comments, setComments] = useState([])
+    const [commentFilter, setCommentFilter] = useState('pending') // 'pending' | 'approved'
 
     // Load blocked IDs
     useEffect(() => {
@@ -114,19 +115,19 @@ const AdminView = ({ onBack, clickedLocation }) => {
                 fetchData()
             }
         }
-    }, [isAuthenticated, activeTab])
+    }, [isAuthenticated, activeTab, commentFilter])
 
-    // Fetch pending comments
+    // Fetch comments based on filter
     const fetchComments = async () => {
         setIsLoading(true)
         const { data, error } = await supabase
             .from('comments')
             .select('*, stores(name)')
-            .eq('status', 'pending')
+            .eq('status', commentFilter)
             .order('created_at', { ascending: false })
 
         if (!error && data) {
-            setPendingComments(data)
+            setComments(data)
         }
         setIsLoading(false)
     }
@@ -414,48 +415,81 @@ const AdminView = ({ onBack, clickedLocation }) => {
                     </div>
                 ) : activeTab === 'comments' ? (
                     /* ===== Comments Management ===== */
-                    pendingComments.length === 0 ? (
-                        <div className="text-center py-20 bg-white/5 rounded-2xl border border-dashed border-white/10">
-                            <MessageSquare size={32} className="mx-auto text-neutral-600 mb-3" />
-                            <p className="text-neutral-500">承認待ちのコメントはありません。</p>
+                    <div className="space-y-4">
+                        {/* Filter Toggles */}
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => setCommentFilter('pending')}
+                                className={`px-3 py-1.5 rounded-full text-xs transition-colors ${commentFilter === 'pending'
+                                    ? 'bg-gold text-black font-bold'
+                                    : 'bg-white/5 text-gold/60 hover:text-gold'
+                                    }`}
+                            >
+                                承認待ち
+                            </button>
+                            <button
+                                onClick={() => setCommentFilter('approved')}
+                                className={`px-3 py-1.5 rounded-full text-xs transition-colors ${commentFilter === 'approved'
+                                    ? 'bg-gold text-black font-bold'
+                                    : 'bg-white/5 text-gold/60 hover:text-gold'
+                                    }`}
+                            >
+                                公開済み
+                            </button>
                         </div>
-                    ) : (
-                        <div className="grid gap-4">
-                            {pendingComments.map(comment => (
-                                <Card key={comment.id} className="p-4 bg-card/30 border-gold/10 hover:border-gold/30 transition-all">
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <p className="text-xs text-gold/60 mb-1">
-                                                    店舗: <span className="text-gold">{comment.stores?.name || '不明'}</span>
-                                                </p>
-                                                <p className="text-[11px] text-neutral-400">
-                                                    投稿者: {comment.commenter_name || '匿名'} ・ {new Date(comment.created_at).toLocaleDateString('ja-JP')}
-                                                </p>
+
+                        {comments.length === 0 ? (
+                            <div className="text-center py-20 bg-white/5 rounded-2xl border border-dashed border-white/10">
+                                <MessageSquare size={32} className="mx-auto text-neutral-600 mb-3" />
+                                <p className="text-neutral-500">
+                                    {commentFilter === 'pending' ? '承認待ちのコメントはありません。' : '公開済みのコメントはありません。'}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid gap-4">
+                                {comments.map(comment => (
+                                    <Card key={comment.id} className="p-4 bg-card/30 border-gold/10 hover:border-gold/30 transition-all">
+                                        <div className="flex flex-col gap-3">
+                                            <div className="flex items-start justify-between">
+                                                <div>
+                                                    <p className="text-xs text-gold/60 mb-1">
+                                                        店舗: <span className="text-gold">{comment.stores?.name || '不明'}</span>
+                                                    </p>
+                                                    <p className="text-[11px] text-neutral-400">
+                                                        投稿者: {comment.commenter_name || '匿名'} ・ {new Date(comment.created_at).toLocaleDateString('ja-JP')}
+                                                    </p>
+                                                </div>
+                                                {comment.status === 'approved' && (
+                                                    <span className="px-2 py-0.5 rounded text-[10px] bg-green-500/10 text-green-400 border border-green-500/20">
+                                                        公開中
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="p-3 rounded-lg bg-white/5 border border-white/5">
+                                                <p className="text-sm text-gold-light/80 whitespace-pre-wrap">{comment.content}</p>
+                                            </div>
+                                            <div className="flex gap-2 justify-end">
+                                                <button
+                                                    onClick={() => handleDeleteComment(comment.id)}
+                                                    className="px-3 py-1.5 rounded-md bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-colors flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={12} /> 削除
+                                                </button>
+                                                {comment.status === 'pending' && (
+                                                    <button
+                                                        onClick={() => handleApproveComment(comment.id)}
+                                                        className="px-3 py-1.5 rounded-md bg-green-500/10 text-green-400 text-xs hover:bg-green-500/20 transition-colors flex items-center gap-1"
+                                                    >
+                                                        <Check size={12} /> 承認
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/5">
-                                            <p className="text-sm text-gold-light/80 whitespace-pre-wrap">{comment.content}</p>
-                                        </div>
-                                        <div className="flex gap-2 justify-end">
-                                            <button
-                                                onClick={() => handleDeleteComment(comment.id)}
-                                                className="px-3 py-1.5 rounded-md bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-colors flex items-center gap-1"
-                                            >
-                                                <Trash2 size={12} /> 削除
-                                            </button>
-                                            <button
-                                                onClick={() => handleApproveComment(comment.id)}
-                                                className="px-3 py-1.5 rounded-md bg-green-500/10 text-green-400 text-xs hover:bg-green-500/20 transition-colors flex items-center gap-1"
-                                            >
-                                                <Check size={12} /> 承認
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    )
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 ) : stores.length === 0 ? (
                     <div className="text-center py-20 bg-white/5 rounded-2xl border border-dashed border-white/10">
                         <p className="text-neutral-500">
