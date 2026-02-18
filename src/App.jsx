@@ -4,6 +4,7 @@ import Map from './components/Map'
 import StoreBottomSheet from './components/StoreBottomSheet'
 import SubmissionForm from './components/SubmissionForm'
 import AdminView from './components/AdminView'
+import ErrorBoundary from './components/ErrorBoundary'
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 import { calculateDistance } from './lib/utils'
 
@@ -351,18 +352,20 @@ function App() {
                 </button>
             </main>
 
-            <StoreBottomSheet
-                store={selectedStore}
-                isOpen={isSheetOpen}
-                onClose={() => setIsSheetOpen(false)}
-                onEdit={(store) => {
-                    setIsSheetOpen(false)
-                    setClickedLocation({ lat: store.latitude, lng: store.longitude })
-                    setIsFormOpen(true)
-                }}
-                favorites={favorites}
-                onToggleFavorite={toggleFavorite}
-            />
+            <ErrorBoundary>
+                <StoreBottomSheet
+                    store={selectedStore}
+                    isOpen={isSheetOpen}
+                    onClose={() => setIsSheetOpen(false)}
+                    onEdit={(store) => {
+                        setIsSheetOpen(false)
+                        setClickedLocation({ lat: store.latitude, lng: store.longitude })
+                        setIsFormOpen(true)
+                    }}
+                    favorites={favorites}
+                    onToggleFavorite={toggleFavorite}
+                />
+            </ErrorBoundary>
 
             <SubmissionForm
                 isOpen={isFormOpen}
