@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { MessageSquare, Send, User } from 'lucide-react'
+import { MessageSquare, Send, User, Pencil, Trash2 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 
 const CommentSection = ({ storeId }) => {
@@ -9,6 +9,9 @@ const CommentSection = ({ storeId }) => {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [formData, setFormData] = useState({ name: '', content: '' })
     const [submitSuccess, setSubmitSuccess] = useState(false)
+    const [editingComment, setEditingComment] = useState(null) // comment being edited
+    const [editContent, setEditContent] = useState('')
+    const mySubmitterId = getSubmitterId()
 
     // Get or create anonymous submitter ID
     const getSubmitterId = () => {
@@ -21,24 +24,23 @@ const CommentSection = ({ storeId }) => {
     }
 
     // Fetch approved comments
-    useEffect(() => {
+    const fetchComments = async () => {
         if (!storeId || !isSupabaseConfigured || !supabase) return
+        setIsLoading(true)
+        const { data, error } = await supabase
+            .from('comments')
+            .select('*')
+            .eq('store_id', storeId)
+            .eq('status', 'approved')
+            .order('created_at', { ascending: false })
 
-        const fetchComments = async () => {
-            setIsLoading(true)
-            const { data, error } = await supabase
-                .from('comments')
-                .select('*')
-                .eq('store_id', storeId)
-                .eq('status', 'approved')
-                .order('created_at', { ascending: false })
-
-            if (!error && data) {
-                setComments(data)
-            }
-            setIsLoading(false)
+        if (!error && data) {
+            setComments(data)
         }
+        setIsLoading(false)
+    }
 
+    useEffect(() => {
         fetchComments()
     }, [storeId])
 
@@ -69,6 +71,44 @@ const CommentSection = ({ storeId }) => {
             }
         } catch (err) {
             alert('エラーが発生しました')
+        }
+        setIsSubmitting(false)
+    }
+
+    // Delete own comment
+    const handleDelete = async (commentId) => {
+        if (!window.confirm('このコメントを削除しますか？')) return
+        const { error } = await supabase
+            .from('comments')
+            .delete()
+            .eq('id', commentId)
+            .eq('submitter_id', mySubmitterId)
+
+        if (error) {
+            alert('削除に失敗しました')
+        } else {
+            fetchComments()
+        }
+    }
+
+    // Edit own comment (sends back to pending for re-approval)
+    const handleEditSubmit = async (commentId) => {
+        if (!editContent.trim()) return
+        setIsSubmitting(true)
+        const { error } = await supabase
+            .from('comments')
+            .update({ content: editContent.trim(), status: 'pending' })
+            .eq('id', commentId)
+            .eq('submitter_id', mySubmitterId)
+
+        if (error) {
+            alert('更新に失敗しました')
+        } else {
+            setEditingComment(null)
+            setEditContent('')
+            setSubmitSuccess(true)
+            setTimeout(() => setSubmitSuccess(false), 5000)
+            fetchComments()
         }
         setIsSubmitting(false)
     }
@@ -161,13 +201,59 @@ const CommentSection = ({ storeId }) => {
                                         {comment.commenter_name || '匿名'}
                                     </span>
                                 </div>
-                                <span className="text-[9px] text-neutral-500">
-                                    {new Date(comment.created_at).toLocaleDateString('ja-JP')}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] text-neutral-500">
+                                        {new Date(comment.created_at).toLocaleDateString('ja-JP')}
+                                    </span>
+                                    {comment.submitter_id === mySubmitterId && (
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => { setEditingComment(comment.id); setEditContent(comment.content) }}
+                                                className="p-1 rounded hover:bg-white/10 text-gold/40 hover:text-gold transition-colors"
+                                                title="編集"
+                                            >
+                                                <Pencil size={11} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(comment.id)}
+                                                className="p-1 rounded hover:bg-red-500/10 text-gold/40 hover:text-red-400 transition-colors"
+                                                title="削除"
+                                            >
+                                                <Trash2 size={11} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <p className="text-xs text-gold-light/70 leading-relaxed whitespace-pre-wrap">
-                                {comment.content}
-                            </p>
+                            {editingComment === comment.id ? (
+                                <div className="mt-1">
+                                    <textarea
+                                        value={editContent}
+                                        onChange={(e) => setEditContent(e.target.value)}
+                                        className="w-full h-16 rounded-md border border-gold/20 bg-white/5 px-3 py-2 text-xs text-gold-light outline-none focus:border-gold/40 transition-colors resize-none"
+                                        maxLength={500}
+                                    />
+                                    <div className="flex gap-2 justify-end mt-1">
+                                        <button
+                                            onClick={() => { setEditingComment(null); setEditContent('') }}
+                                            className="px-2 py-1 text-[10px] text-neutral-400 hover:text-gold-light"
+                                        >
+                                            キャンセル
+                                        </button>
+                                        <button
+                                            onClick={() => handleEditSubmit(comment.id)}
+                                            disabled={isSubmitting || !editContent.trim()}
+                                            className="px-2 py-1 rounded-md bg-gold/20 text-gold text-[10px] font-semibold hover:bg-gold/30 disabled:opacity-40"
+                                        >
+                                            {isSubmitting ? '更新中...' : '更新（再承認）'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gold-light/70 leading-relaxed whitespace-pre-wrap">
+                                    {comment.content}
+                                </p>
+                            )}
                         </div>
                     ))}
                 </div>
