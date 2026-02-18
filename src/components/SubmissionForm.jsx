@@ -76,23 +76,11 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
         setIsGeocoding(true)
 
-        // Clean address for better search results
-        // Remove building names, floors, room numbers which confuse Nominatim
-        let cleanedAddress = formData.address
-            .replace(/[0-9]+F/gi, '') // 3F, 4f
-            .replace(/[０-９]+階/g, '') // ３階
-            .replace(/[0-9]+階/g, '') // 3階
-            .replace(/ビル.*$/g, '') // ビル and anything after
-            .replace(/[0-9]+号室/g, '') // 101号室
-            .replace(/[\(（].*[\)）]/g, '') // text in brackets
-            .trim()
-
-        const query = `${formData.prefecture}${cleanedAddress}`
-        console.log('Geocoding query:', query)
-
-        try {
+        // Helper function to call Nominatim
+        const searchLocation = async (q) => {
+            console.log('Trying Nominatim search:', q)
             const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
                 {
                     headers: {
                         'Accept-Language': 'ja',
@@ -100,17 +88,72 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     }
                 }
             )
-            const data = await response.json()
-            if (data && data.length > 0) {
-                const { lat, lon } = data[0]
+            return await response.json()
+        }
+
+        const originalInput = `${formData.prefecture} ${formData.address}`
+
+        try {
+            // 1. Extract Postal Code if exists (e.g. 101-0021)
+            const postalMatch = originalInput.match(/[0-9]{3}-?[0-9]{4}/)
+            const postalCode = postalMatch ? postalMatch[0] : null
+
+            // 2. Clean building noise for sub-queries
+            const clean = (str) => str
+                .replace(/[0-9]+F/gi, '')
+                .replace(/[０-９]+階/g, '')
+                .replace(/[0-9]+階/g, '')
+                .replace(/ビル.*$/g, '')
+                .replace(/[0-9]+号室/g, '')
+                .replace(/[\(（].*[\)）]/g, '')
+                .replace(/東京都|千代田区|外神田/g, (m) => m) // keep these but normalize
+                .trim()
+
+            // 3. Smart parsing for Google Maps format (comma separated)
+            let queries = []
+
+            // If contains commas, it might be reversed
+            if (formData.address.includes(',')) {
+                const parts = formData.address.split(',').map(p => p.trim())
+                // Reversed: [Building, Address, Ward, City, PostCode]
+                // Try joining in reverse order
+                queries.push(parts.reverse().join(' '))
+            }
+
+            // Always add a query with postal code if found
+            if (postalCode) {
+                queries.push(postalCode)
+            }
+
+            // Add standard joined query
+            queries.push(`${formData.prefecture}${clean(formData.address)}`)
+
+            // Add very simple address (just prefecture + city/ward/area)
+            const simpleAddress = clean(formData.address).split(/[\s　]/)[0]
+            queries.push(`${formData.prefecture}${simpleAddress}`)
+
+            // Unique queries
+            const uniqueQueries = [...new Set(queries)].filter(q => q.length > 2)
+
+            let result = null
+            for (const q of uniqueQueries) {
+                const data = await searchLocation(q)
+                if (data && data.length > 0) {
+                    result = data[0]
+                    break
+                }
+            }
+
+            if (result) {
+                const { lat, lon } = result
                 setFormData(prev => ({
                     ...prev,
                     latitude: parseFloat(lat),
                     longitude: parseFloat(lon)
                 }))
+                console.log('Geocoding success:', result.display_name)
             } else {
-                // Try a simpler search if the first one fails
-                alert('住所の特定が難しいため、番地までで再試行するか、手動でピンを設定してください。')
+                alert('住所の特定が難しいため、番地までのシンプルな住所（例：千代田区外神田1-6-3）で試すか、手動でピンを設定してください。')
             }
         } catch (error) {
             console.error('Geocoding error:', error)
