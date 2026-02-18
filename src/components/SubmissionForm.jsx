@@ -166,7 +166,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
     }
 
     // Shared Geocoding Logic
-    // This allows us to use the same smart query logic in both manual (button) and auto (submit) flows
     const performGeocoding = async (params) => {
         const { prefecture, cityTown, street, postal_code, address_line2 } = params
 
@@ -212,24 +211,52 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                 .replace(/No\.[0-9]+/gi, '')
                 .replace(/[0-9]+階/g, '')
                 .replace(/[0-9]+号室/g, '')
+                .replace(/[ \(（].*[ \)）]/g, '')
                 .trim()
         }
 
         // 1. Full Address & Variations
         if (prefecture && cityTown && normalizedStreet) {
+            // 1-1. Standard: Prefecture CityTown Street
             queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
             if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${normalizedStreet}`)
 
+            // 1-2. Hyphenated: 1丁目7-1 -> 1-7-1
             const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
             if (hyphnatedStreet !== normalizedStreet) {
                 queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
                 if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${hyphnatedStreet}`)
             }
 
+            // 1-3. Chome: 1-7-1 -> 1丁目7-1
             if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
                 const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
                 queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
                 if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${chomeStreet}`)
+
+                // 1-4. Merged Town+Chome: "神田須田町1丁目 7-1" 
+                // This captures cases where "Chome" is part of the Town name in OSM
+                const chomeMatch = chomeStreet.match(/^(\d+丁目)(.*)$/)
+                if (chomeMatch && spacedCityTown !== cityTown) {
+                    const [ward, town] = spacedCityTown.split(' ')
+                    const chomePart = chomeMatch[1] // "1丁目"
+                    const restPart = chomeMatch[2]  // "7-1" or "-7-1"
+                    const restClean = restPart.replace(/^-/, '') // "7-1"
+
+                    // Pattern: "Ward TownChome Rest" (e.g. 千代田区 神田須田町1丁目 7-1)
+                    queries.push(`${prefecture} ${ward} ${town}${chomePart} ${restClean}`)
+                }
+            }
+
+            // 1-5. Parent Address Fallback (1-7-1 -> 1-7)
+            // Use this if precise match fails. 
+            // We include this in the query list, but Nominatim usually prioritizes better matches.
+            // We add it to the end or rely on list order.
+            const parentMatch = normalizedStreet.match(/^(\d+)[-丁目](\d+)[-丁目](\d+)$/)
+            if (parentMatch) {
+                const parentStreet = `${parentMatch[1]}-${parentMatch[2]}` // "1-7"
+                queries.push(`${prefecture} ${cityTown} ${parentStreet}`)
+                if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${parentStreet}`)
             }
         }
 
@@ -251,6 +278,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
         console.log('Generated queries:', uniqueQueries)
 
+        // We try queries in order. The first result is returned.
         for (const q of uniqueQueries) {
             const data = await searchLocation(q)
             if (data && data.length > 0) {
@@ -284,10 +312,12 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     latitude: parseFloat(lat),
                     longitude: parseFloat(lon)
                 }))
-                console.log('Geocoding success:', result.display_name)
+                // Use substring to avoid too long messages
+                alert(`位置を取得しました: ${result.display_name.substring(0, 50)}...\n※正確でない場合は手動で位置を修正してください。`)
+                console.log('Geocoding success:', result)
             }
             else {
-                alert('場所を特定できませんでした。手動でピンを設定してください。')
+                alert('住所から位置を特定できませんでした。\n「地図上で位置を修正」ボタンから手動で設定してください。')
             }
         } catch (error) {
             console.error('Geocoding error:', error)
@@ -307,14 +337,12 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         let finalLatitude = formData.latitude
         let finalLongitude = formData.longitude
 
-        // Auto-geocode if coordinates are still at default Tokyo Station
-        // Default: 35.681, 139.767
         const isDefaultLocation =
             Math.abs(formData.latitude - 35.681) < 0.0001 &&
             Math.abs(formData.longitude - 139.767) < 0.0001
 
         if (isDefaultLocation && formData.prefecture) {
-            const confirmAuto = window.confirm('位置情報が初期値（東京駅）のままです。入力された住所から自動設定してもよろしいですか？\nキャンセルを選ぶと、現在の位置（東京駅）で登録されます。')
+            const confirmAuto = window.confirm('現在、ピンの位置が初期値（東京駅）になっています。\n入力された住所から自動で位置を設定しますか？\n\n「キャンセル」を押すと、現在の位置（東京駅）のまま登録されます。')
             if (confirmAuto) {
                 try {
                     const result = await performGeocoding({
@@ -328,10 +356,10 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     if (result) {
                         finalLatitude = parseFloat(result.lat)
                         finalLongitude = parseFloat(result.lon)
-                        alert(`位置情報を自動取得しました: ${result.display_name.substring(0, 40)}...`)
+                        alert(`住所から自動設定しました: ${result.display_name.substring(0, 50)}...`)
                     } else {
-                        alert('住所から位置を特定できませんでした。手動で設定してください。')
-                        return // Stop submission to let user fix it
+                        alert('住所から位置を特定できませんでした。\n「地図上で位置を修正」ボタンを押して、手動でピンを置いてください。')
+                        return // Stop submission
                     }
 
                 } catch (error) {
@@ -342,7 +370,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             }
         }
 
-        // Concatenate address for submission
         const fullAddress = `${formData.city_town || ''} ${formData.address_line1 || ''} ${formData.address_line2 || ''}`.replace(/\s+/g, ' ').trim()
 
         const submissionPayload = {
@@ -392,7 +419,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
 
                         {/* 郵便番号 + 都道府県 + 住所 */}
                         <div className="space-y-3">
-                            {/* 郵便番号 */}
                             <div>
                                 <label className="text-xs text-gold/60 block mb-1.5">郵便番号</label>
                                 <input
@@ -459,7 +485,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                 </p>
                             </div>
 
-                            {/* Address Line 2 */}
                             <div>
                                 <label className="text-xs text-gold/60 block mb-1.5">建物名・部屋番号（任意）</label>
                                 <input
@@ -489,7 +514,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                                     <span>座標: {formData.latitude?.toFixed(5)}, {formData.longitude?.toFixed(5)}</span>
                                 </div>
                                 <p className="text-[10px] text-neutral-500">
-                                    {isGeocoding ? '位置を検索中...' : '※ 自動設定された位置がズレている場合は修正してください'}
+                                    {isGeocoding ? '位置を検索中...' : '※ 自動設定された位置がズレている場合は手動で修正してください'}
                                 </p>
                             </div>
                             <button
@@ -501,7 +526,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                             </button>
                         </div>
 
-                        {/* チェックボックス */}
+                        {/* checkbox and other inputs remain same... */}
                         <div className="flex gap-6">
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
@@ -525,7 +550,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                             </label>
                         </div>
 
-                        {/* フォーマット */}
                         <div>
                             <label className="text-xs text-gold/60 block mb-1.5">フォーマット（自由記述）</label>
                             <input
@@ -537,7 +561,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                             />
                         </div>
 
-                        {/* 備考 */}
                         <div>
                             <label className="text-xs text-gold/60 block mb-1.5">備考</label>
                             <textarea
@@ -552,7 +575,6 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                     </form>
                 </div>
 
-                {/* Fixed submit button at bottom */}
                 <div className="shrink-0 px-5 py-4 border-t border-gold/20 bg-card">
                     <button
                         type="submit"
