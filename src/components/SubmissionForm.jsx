@@ -165,23 +165,9 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }
     }
 
-    // Shared Geocoding Logic
+    // Shared Geocoding Logic - Uses GSI (国土地理院) API as primary, Nominatim as fallback
     const performGeocoding = async (params) => {
         const { prefecture, cityTown, street, postal_code, address_line2 } = params
-
-        const searchLocation = async (q) => {
-            console.log('Trying Nominatim search:', q)
-            const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
-                {
-                    headers: {
-                        'Accept-Language': 'ja',
-                        'User-Agent': 'FaB-Map-App'
-                    }
-                }
-            )
-            return await response.json()
-        }
 
         const toHalfWidth = (str) => {
             if (!str) return ''
@@ -190,111 +176,92 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             }).replace(/　/g, ' ')
         }
 
-        let queries = []
-
-        // Helper to split City/Ward from Town
-        // e.g. "千代田区神田須田町" -> "千代田区 神田須田町"
-        const splitCityTown = (ct) => {
-            if (!ct) return ct
-            const match = ct.match(/^(.+?[区市郡])(.+)$/)
-            if (match) return `${match[1]} ${match[2]}`
-            return ct
-        }
-        const spacedCityTown = splitCityTown(cityTown)
         const normalizedStreet = toHalfWidth(street)
 
-        // Prepare Building Name (remove floor info)
-        let buildingName = ''
-        if (address_line2) {
-            buildingName = toHalfWidth(address_line2)
-                .replace(/[0-9]+F/gi, '')
-                .replace(/No\.[0-9]+/gi, '')
-                .replace(/[0-9]+階/g, '')
-                .replace(/[0-9]+号室/g, '')
-                .replace(/[ \(（].*[ \)）]/g, '')
-                .trim()
+        // --- Primary: GSI (国土地理院) API ---
+        // https://msearch.gsi.go.jp/address-search/AddressSearch
+        // Accurate to street/block level for Japanese addresses
+        const searchGSI = async (q) => {
+            console.log('Trying GSI search:', q)
+            try {
+                const response = await fetch(
+                    `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`
+                )
+                const data = await response.json()
+                if (data && data.length > 0) {
+                    // GSI returns GeoJSON features with [lng, lat] coordinates
+                    const feature = data[0]
+                    const [lon, lat] = feature.geometry.coordinates
+                    return {
+                        lat: lat.toString(),
+                        lon: lon.toString(),
+                        display_name: feature.properties.title || q
+                    }
+                }
+            } catch (error) {
+                console.error('GSI search error:', error)
+            }
+            return null
         }
 
-        // 1. Full Address & Variations
+        // Build GSI query strings (simple concatenation works best)
+        const gsiQueries = []
         if (prefecture && cityTown && normalizedStreet) {
-            // 1-0. Concatenated (No spaces) - often better for Japanese tokenizer
-            // e.g. "東京都千代田区神田須田町1-7-1"
-            queries.push(`${prefecture}${cityTown}${normalizedStreet}`)
-
-            // 1-0-b. Concatenated with merged chome
-            if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
-                const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目') // 1-7-1 -> 1丁目7-1
-                queries.push(`${prefecture}${cityTown}${chomeStreet}`)
-            }
-
-            // 1-1. Standard: Prefecture CityTown Street
-            queries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
-            if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${normalizedStreet}`)
-
-            // 1-2. Hyphenated: 1丁目7-1 -> 1-7-1
-            const hyphnatedStreet = normalizedStreet.replace(/丁目/g, '-').replace(/-+/g, '-')
-            if (hyphnatedStreet !== normalizedStreet) {
-                queries.push(`${prefecture} ${cityTown} ${hyphnatedStreet}`)
-                if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${hyphnatedStreet}`)
-            }
-
-            // 1-3. Chome: 1-7-1 -> 1丁目7-1
+            // Full address: "東京都千代田区神田須田町1-7-1"
+            gsiQueries.push(`${prefecture}${cityTown}${normalizedStreet}`)
+            // With 丁目 notation: "東京都千代田区神田須田町1丁目7-1"
             if (normalizedStreet.match(/^\d+-\d+(-\d+)?$/)) {
                 const chomeStreet = normalizedStreet.replace(/^(\d+)-/, '$1丁目')
-                queries.push(`${prefecture} ${cityTown} ${chomeStreet}`)
-                if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${chomeStreet}`)
-
-                // 1-4. Merged Town+Chome: "神田須田町1丁目 7-1" 
-                // This captures cases where "Chome" is part of the Town name in OSM
-                const chomeMatch = chomeStreet.match(/^(\d+丁目)(.*)$/)
-                if (chomeMatch && spacedCityTown !== cityTown) {
-                    const [ward, town] = spacedCityTown.split(' ')
-                    const chomePart = chomeMatch[1] // "1丁目"
-                    const restPart = chomeMatch[2]  // "7-1" or "-7-1"
-                    const restClean = restPart.replace(/^-/, '') // "7-1"
-
-                    // Pattern: "Ward TownChome Rest" (e.g. 千代田区 神田須田町1丁目 7-1)
-                    queries.push(`${prefecture} ${ward} ${town}${chomePart} ${restClean}`)
-                }
-            }
-
-            // 1-5. Parent Address Fallback (1-7-1 -> 1-7)
-            // Use this if precise match fails. 
-            // We include this in the query list, but Nominatim usually prioritizes better matches.
-            // We add it to the end or rely on list order.
-            const parentMatch = normalizedStreet.match(/^(\d+)[-丁目](\d+)[-丁目](\d+)$/)
-            if (parentMatch) {
-                const parentStreet = `${parentMatch[1]}-${parentMatch[2]}` // "1-7"
-                queries.push(`${prefecture} ${cityTown} ${parentStreet}`)
-                if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${parentStreet}`)
+                gsiQueries.push(`${prefecture}${cityTown}${chomeStreet}`)
             }
         }
-
-        // 2. Building Name
-        if (prefecture && cityTown && buildingName) {
-            queries.push(`${prefecture} ${cityTown} ${buildingName}`)
-            if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown} ${buildingName}`)
-        }
-
-        // 3. Fallback: City/Town
         if (prefecture && cityTown) {
-            queries.push(`${prefecture} ${cityTown}`)
-            if (spacedCityTown !== cityTown) queries.push(`${prefecture} ${spacedCityTown}`)
+            gsiQueries.push(`${prefecture}${cityTown}`)
         }
-        // 4. Fallback: Postal Code
-        if (postal_code) queries.push(postal_code)
 
-        // Execute Search
-        const uniqueQueries = [...new Set(queries)].filter(q => q && q.trim().length > 0)
-        console.log('Generated queries:', uniqueQueries)
+        // Try GSI first
+        for (const q of gsiQueries) {
+            const result = await searchGSI(q)
+            if (result) return result
+        }
 
-        // We try queries in order. The first result is returned.
-        for (const q of uniqueQueries) {
-            const data = await searchLocation(q)
-            if (data && data.length > 0) {
-                return data[0]
+        // --- Fallback: Nominatim (for edge cases / non-Japanese addresses) ---
+        const searchNominatim = async (q) => {
+            console.log('Trying Nominatim fallback:', q)
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
+                    {
+                        headers: {
+                            'Accept-Language': 'ja',
+                            'User-Agent': 'FaB-Map-App'
+                        }
+                    }
+                )
+                const data = await response.json()
+                if (data && data.length > 0) return data[0]
+            } catch (error) {
+                console.error('Nominatim search error:', error)
             }
+            return null
         }
+
+        const nominatimQueries = []
+        if (prefecture && cityTown && normalizedStreet) {
+            nominatimQueries.push(`${prefecture} ${cityTown} ${normalizedStreet}`)
+        }
+        if (prefecture && cityTown) {
+            nominatimQueries.push(`${prefecture} ${cityTown}`)
+        }
+        if (postal_code) {
+            nominatimQueries.push(postal_code)
+        }
+
+        for (const q of nominatimQueries) {
+            const result = await searchNominatim(q)
+            if (result) return result
+        }
+
         return null
     }
 
