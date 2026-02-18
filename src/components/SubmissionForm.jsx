@@ -23,6 +23,7 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         format_text: '',
         notes: ''
     })
+    const [isGeocoding, setIsGeocoding] = useState(false)
 
     useEffect(() => {
         if (initialData) {
@@ -67,6 +68,43 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
         }))
     }
 
+    const handleGeocode = async () => {
+        if (!formData.prefecture || !formData.address) {
+            alert('都道府県と住所を入力してください')
+            return
+        }
+
+        setIsGeocoding(true)
+        const query = `${formData.prefecture}${formData.address}`
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
+                {
+                    headers: {
+                        'Accept-Language': 'ja',
+                        'User-Agent': 'FaB-Map-App'
+                    }
+                }
+            )
+            const data = await response.json()
+            if (data && data.length > 0) {
+                const { lat, lon } = data[0]
+                setFormData(prev => ({
+                    ...prev,
+                    latitude: parseFloat(lat),
+                    longitude: parseFloat(lon)
+                }))
+            } else {
+                alert('住所から場所を特定できませんでした。住所を短くするか、手動でピンの位置を設定してください。')
+            }
+        } catch (error) {
+            console.error('Geocoding error:', error)
+            alert('位置情報の取得中にエラーが発生しました')
+        } finally {
+            setIsGeocoding(false)
+        }
+    }
+
     const handleSubmit = (e) => {
         e.preventDefault()
         if (!formData.name || !formData.prefecture) {
@@ -109,30 +147,50 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
                         </div>
 
                         {/* 都道府県 + 住所 */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="text-xs text-gold/60 block mb-1.5">都道府県（必須）</label>
-                                <select
-                                    name="prefecture"
-                                    value={formData.prefecture}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gold-light outline-none focus:border-gold/40 transition-colors"
-                                >
-                                    <option value="">選択</option>
-                                    {PREFECTURES.map(p => <option key={p} value={p}>{p}</option>)}
-                                </select>
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs text-gold/60 block mb-1.5">都道府県（必須）</label>
+                                    <select
+                                        name="prefecture"
+                                        value={formData.prefecture}
+                                        onChange={handleChange}
+                                        required
+                                        className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-gold-light outline-none focus:border-gold/40 transition-colors"
+                                    >
+                                        <option value="">選択</option>
+                                        {PREFECTURES.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex flex-col">
+                                    <label className="text-xs text-gold/60 block mb-1.5">住所（任意）</label>
+                                    <div className="relative group/address">
+                                        <input
+                                            name="address"
+                                            value={formData.address}
+                                            onChange={handleChange}
+                                            placeholder="市区町村、番地"
+                                            className="w-full h-11 rounded-lg border border-white/10 bg-white/5 pl-4 pr-12 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleGeocode}
+                                            disabled={isGeocoding}
+                                            title="住所から座標を取得"
+                                            className="absolute right-1 top-1 bottom-1 px-3 rounded-md bg-gold/10 hover:bg-gold/20 text-gold transition-colors flex items-center justify-center disabled:opacity-50"
+                                        >
+                                            {isGeocoding ? (
+                                                <div className="w-4 h-4 border-2 border-gold/20 border-t-gold animate-spin rounded-full" />
+                                            ) : (
+                                                <MapPin size={16} />
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label className="text-xs text-gold/60 block mb-1.5">住所（任意）</label>
-                                <input
-                                    name="address"
-                                    value={formData.address}
-                                    onChange={handleChange}
-                                    placeholder="市区町村、番地"
-                                    className="w-full h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-gold-light placeholder:text-neutral-500 outline-none focus:border-gold/40 transition-colors"
-                                />
-                            </div>
+                            <p className="text-[10px] text-neutral-500">
+                                ※ 住所を入力してピンアイコンを押すと、座標を自動設定します。
+                            </p>
                         </div>
 
                         {/* 座標情報 */}
