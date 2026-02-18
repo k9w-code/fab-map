@@ -14,6 +14,7 @@ const AdminView = ({ onBack, clickedLocation }) => {
     const [editingStore, setEditingStore] = useState(null)
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [itemToDelete, setItemToDelete] = useState(null)
+    const [isPickingLocation, setIsPickingLocation] = useState(false)
     const [blockedIds, setBlockedIds] = useState([])
 
     // Load blocked IDs
@@ -39,14 +40,6 @@ const AdminView = ({ onBack, clickedLocation }) => {
         setBlockedIds(newBlocked)
         localStorage.setItem('fab_map_blocked_ids', JSON.stringify(newBlocked))
     }
-
-    // ... (existing code)
-
-    // In render loop
-    // inside stores.map((store) => {
-    // const isBlocked = blockedIds.includes(store.submitter_id)
-
-    // Changing the loop to include checks
     useEffect(() => {
         const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123'
         const savedAuth = sessionStorage.getItem('admin_auth')
