@@ -4,7 +4,7 @@ import Map from './components/Map'
 import StoreBottomSheet from './components/StoreBottomSheet'
 import SubmissionForm from './components/SubmissionForm'
 import AdminView from './components/AdminView'
-import { supabase } from './lib/supabaseClient'
+import { supabase, isSupabaseConfigured } from './lib/supabaseClient'
 
 const PREFECTURES = [
     "すべて", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
@@ -40,6 +40,10 @@ function App() {
 
     // Fetch stores from Supabase
     const fetchStores = useCallback(async () => {
+        if (!isSupabaseConfigured || !supabase) {
+            console.warn('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
+            return
+        }
         try {
             const { data, error } = await supabase
                 .from('stores')
@@ -107,6 +111,10 @@ function App() {
     }
 
     const handleSubmission = async (formData) => {
+        if (!isSupabaseConfigured || !supabase) {
+            alert('データベースが設定されていません。管理者にお問い合わせください。')
+            return
+        }
         const { error } = await supabase
             .from('stores')
             .insert([{
