@@ -167,7 +167,14 @@ function App() {
 
     // Admin view
     if (isAdminView) {
-        return <AdminView onBack={() => window.location.hash = ''} />
+        return (
+            <AdminView
+                onBack={() => {
+                    window.location.hash = ''
+                    fetchStores()
+                }}
+            />
+        )
     }
 
     return (
