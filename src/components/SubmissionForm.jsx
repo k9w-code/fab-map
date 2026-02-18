@@ -351,32 +351,38 @@ const SubmissionForm = ({ isOpen, onClose, onSubmit, initialLocation, initialDat
             Math.abs(formData.latitude - 35.681) < 0.0001 &&
             Math.abs(formData.longitude - 139.767) < 0.0001
 
+        // Auto-geocode if coordinates are still at default Tokyo Station
+
+        // Force auto-geocode if location is default and we have address data
         if (isDefaultLocation && formData.prefecture) {
-            const confirmAuto = window.confirm('現在、ピンの位置が初期値（東京駅）になっています。\n入力された住所から自動で位置を設定しますか？\n\n「キャンセル」を押すと、現在の位置（東京駅）のまま登録されます。')
-            if (confirmAuto) {
-                try {
-                    const result = await performGeocoding({
-                        prefecture: formData.prefecture,
-                        cityTown: formData.city_town || '',
-                        street: formData.address_line1 || '',
-                        postal_code: formData.postal_code,
-                        address_line2: formData.address_line2
-                    })
+            // Show a non-blocking toast or just log? 
+            // Since we can't show toast easily without UI lib, we just proceed.
+            // We'll use a blocking loading state if needed, but for now await is fine.
+            try {
+                const result = await performGeocoding({
+                    prefecture: formData.prefecture,
+                    cityTown: formData.city_town || '',
+                    street: formData.address_line1 || '',
+                    postal_code: formData.postal_code,
+                    address_line2: formData.address_line2
+                })
 
-                    if (result) {
-                        finalLatitude = parseFloat(result.lat)
-                        finalLongitude = parseFloat(result.lon)
-                        alert(`住所から自動設定しました: ${result.display_name.substring(0, 50)}...`)
-                    } else {
-                        alert('住所から位置を特定できませんでした。\n「地図上で位置を修正」ボタンを押して、手動でピンを置いてください。')
-                        return // Stop submission
-                    }
-
-                } catch (error) {
-                    console.error("Auto-geocode error", error)
-                    alert('位置情報の自動取得に失敗しました。')
-                    return
+                if (result) {
+                    finalLatitude = parseFloat(result.lat)
+                    finalLongitude = parseFloat(result.lon)
+                    // console.log('Auto-geocoded to:', finalLatitude, finalLongitude)
+                } else {
+                    // Only alert if we REALLY can't find anything AND the user hasn't set a pin
+                    const proceed = window.confirm('住所から位置を特定できませんでした。\n現在の位置（東京駅）のまま登録しますか？\n\nキャンセルして地図上で位置を修正する場合は「キャンセル」を押してください。')
+                    if (!proceed) return
                 }
+
+            } catch (error) {
+                console.error("Auto-geocode error", error)
+                // If error, just list user know or proceed?
+                // Better to let them know.
+                alert('位置情報の自動取得に失敗しました。')
+                return
             }
         }
 
