@@ -63,26 +63,29 @@ const AdminView = ({ onBack, clickedLocation }) => {
         }
     }, [clickedLocation, isPickingLocation])
 
+    // SHA-256 hash helper using Web Crypto API
+    const sha256 = async (message) => {
+        const msgBuffer = new TextEncoder().encode(message)
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
+        const hashArray = Array.from(new Uint8Array(hashBuffer))
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+
     const handleLogin = async (e) => {
         e.preventDefault()
         try {
-            const response = await fetch('/api/admin-login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password })
-            })
-            const data = await response.json()
+            const inputHash = await sha256(password)
+            const storedHash = import.meta.env.VITE_ADMIN_HASH
 
-            if (data.success) {
+            if (inputHash === storedHash) {
                 setIsAuthenticated(true)
                 sessionStorage.setItem('admin_auth', 'true')
-                sessionStorage.setItem('admin_token', data.token)
             } else {
-                alert(data.error || 'パスワードが違います')
+                alert('パスワードが違います')
             }
         } catch (err) {
             console.error('Login error:', err)
-            alert('ログインに失敗しました。サーバーに接続できません。')
+            alert('ログインの処理に失敗しました。')
         }
     }
 
