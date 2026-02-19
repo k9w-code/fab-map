@@ -1,4 +1,21 @@
 -- stores テーブルの作成
+-- 管理者テーブル（UIDのみ格納）
+create table admin_users (
+  id uuid primary key references auth.users(id) on delete cascade
+);
+
+-- 管理者判定関数
+create or replace function is_admin()
+returns boolean as $$
+begin
+  return exists (
+    select 1 from admin_users
+    where id = auth.uid()
+  );
+end;
+$$ language plpgsql security definer;
+
+-- stores テーブルの作成
 create table stores (
   id uuid default gen_random_uuid() primary key,
   name text not null,
@@ -50,27 +67,23 @@ with check (true);
 -- ⚠️ 以下のポリシーはSupabaseダッシュボードのSQL Editorで手動実行が必要です
 -- ※ git push しただけでは反映されません
 
--- 全ユーザーが全データを更新できるポリシー
--- （管理画面のパスワード保護 + Vercel Serverless Function によるセキュリティで保護）
-create policy "Allow update access"
+-- 全ユーザーが全データを更新できるポリシー (廃止 -> 管理者のみ許可)
+create policy "Allow admin update access"
 on stores for update
-using (true)
-with check (true);
+using (is_admin())
+with check (is_admin());
 
--- 全ユーザーが全データを削除できるポリシー
-create policy "Allow delete access"
+-- 全ユーザーが全データを削除できるポリシー (廃止 -> 管理者のみ許可)
+create policy "Allow admin delete access"
 on stores for delete
-using (true);
+using (is_admin());
 
 -- ⚠️ 既存のSELECTポリシーは承認済みデータのみを返します。
 -- 管理画面でpendingデータを表示するには、以下のポリシーも追加が必要です:
-create policy "Allow read all stores"
+-- 管理画面でpendingデータを表示するには、管理者のみ許可
+create policy "Allow admin read all stores"
 on stores for select
-using (true);
--- 注意: このポリシーを追加すると、既存の "Allow public read-only access for approved stores"
--- ポリシーと合わせて、全データが読み取り可能になります。
--- 管理画面のみで pending データを閲覧する場合は、このポリシーの代わりに
--- Supabase Auth を使った認証ユーザー向けポリシーの検討をお勧めします。
+using (is_admin());
 
 -- ============================================================
 -- comments テーブル（ユーザーコメント機能）
@@ -100,23 +113,26 @@ create policy "Allow read approved comments"
 on comments for select
 using (status = 'approved');
 
--- 全コメントの読み取り（管理画面用）
-create policy "Allow read all comments"
+-- 全コメントの読み取り（管理画面用 -> 管理者のみ）
+create policy "Allow admin read all comments"
 on comments for select
-using (true);
+using (is_admin());
 
 -- 誰でもコメント投稿可能
 create policy "Allow insert comments"
 on comments for insert
 with check (true);
 
--- コメントの更新を許可（管理画面での承認用）
-create policy "Allow update comments"
+-- コメントの更新を許可（管理画面での承認用 -> 管理者のみ）
+create policy "Allow admin update comments"
 on comments for update
-using (true)
-with check (true);
+using (is_admin())
+with check (is_admin());
 
--- コメントの削除を許可
-create policy "Allow delete comments"
+-- コメントの削除を許可（管理者のみ）
+-- ※自分のコメント削除機能を維持する場合は、submitter_id のチェックも必要だが、
+--   現状はセキュリティ優先で管理者のみにする。
+--   (ユーザーによる自己削除は後日対応: (submitter_id = current_setting('request.headers')::json->>'x-submitter-id') 等)
+create policy "Allow admin delete comments"
 on comments for delete
-using (true);
+using (is_admin());

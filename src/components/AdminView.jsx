@@ -10,8 +10,9 @@ const AdminView = ({ onBack, clickedLocation }) => {
     const [isLoading, setIsLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('pending') // 'pending' | 'approved' | 'comments'
     const [isAuthenticated, setIsAuthenticated] = useState(false)
+    const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [editingStore, setEditingStore] = useState(null)
+    const [isLoadingAuth, setIsLoadingAuth] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [itemToDelete, setItemToDelete] = useState(null)
     const [isPickingLocation, setIsPickingLocation] = useState(false)
@@ -43,11 +44,17 @@ const AdminView = ({ onBack, clickedLocation }) => {
         localStorage.setItem('fab_map_blocked_ids', JSON.stringify(newBlocked))
     }
     useEffect(() => {
-        const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123'
-        const savedAuth = sessionStorage.getItem('admin_auth')
-        if (savedAuth === 'true') {
-            setIsAuthenticated(true)
-        }
+        // Check initial session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setIsAuthenticated(!!session)
+        })
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setIsAuthenticated(!!session)
+        })
+
+        return () => subscription.unsubscribe()
     }, [])
 
     // Monitor clickedLocation for picking
@@ -65,30 +72,32 @@ const AdminView = ({ onBack, clickedLocation }) => {
         }
     }, [clickedLocation, isPickingLocation])
 
-    // SHA-256 hash helper using Web Crypto API
-    const sha256 = async (message) => {
-        const msgBuffer = new TextEncoder().encode(message)
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
-        const hashArray = Array.from(new Uint8Array(hashBuffer))
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-    }
-
+    // Login handler
     const handleLogin = async (e) => {
         e.preventDefault()
+        setIsLoadingAuth(true)
         try {
-            const inputHash = await sha256(password)
-            const storedHash = import.meta.env.VITE_ADMIN_HASH
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password
+            })
 
-            if (inputHash === storedHash) {
-                setIsAuthenticated(true)
-                sessionStorage.setItem('admin_auth', 'true')
-            } else {
-                alert('パスワードが違います')
+            if (error) {
+                alert('ログインに失敗しました: ' + error.message)
             }
+            // onAuthStateChange will handle success state
         } catch (err) {
             console.error('Login error:', err)
-            alert('ログインの処理に失敗しました。')
+            alert('ログイン処理中にエラーが発生しました。')
+        } finally {
+            setIsLoadingAuth(false)
         }
+    }
+
+    // Logout handler
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut()
+        if (error) alert('ログアウト時にエラーが発生しました')
     }
 
     const fetchData = async () => {
@@ -327,19 +336,31 @@ const AdminView = ({ onBack, clickedLocation }) => {
                         <p className="text-neutral-500 text-sm mt-1">管理画面にアクセスするにはパスワードが必要です</p>
                     </div>
                     <form onSubmit={handleLogin} className="space-y-4">
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="パスワードを入力..."
-                            className="w-full h-12 rounded-xl border border-white/10 bg-white/5 px-4 text-gold-light outline-none focus:border-gold/40 transition-colors"
-                            autoFocus
-                        />
+                        <div>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="Email"
+                                className="w-full h-12 rounded-xl border border-white/10 bg-white/5 px-4 text-gold-light outline-none focus:border-gold/40 transition-colors mb-2"
+                                autoFocus
+                                required
+                            />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Password"
+                                className="w-full h-12 rounded-xl border border-white/10 bg-white/5 px-4 text-gold-light outline-none focus:border-gold/40 transition-colors"
+                                required
+                            />
+                        </div>
                         <button
                             type="submit"
-                            className="w-full h-12 rounded-xl bg-gold text-black font-bold active:scale-95 transition-transform"
+                            disabled={isLoadingAuth}
+                            className="w-full h-12 rounded-xl bg-gold text-black font-bold active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            ログイン
+                            {isLoadingAuth ? 'ログイン中...' : 'ログイン'}
                         </button>
                     </form>
                     <button onClick={onBack} className="w-full mt-4 text-gold/40 text-sm hover:text-gold transition-colors">
@@ -407,6 +428,13 @@ const AdminView = ({ onBack, clickedLocation }) => {
                             コメント
                         </button>
                     </div>
+
+                    <button
+                        onClick={handleLogout}
+                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-sm font-bold border border-red-500/20"
+                    >
+                        ログアウト
+                    </button>
                 </div>
 
                 {isLoading ? (
