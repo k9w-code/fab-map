@@ -108,6 +108,16 @@ const StoreBottomSheet = ({ store, isOpen, onClose, onEdit, favorites = [], onTo
                         </p>
                     </div>
 
+                    {/* Notes */}
+                    {store.notes && (
+                        <div className="mb-4">
+                            <h3 className="text-[11px] font-semibold text-gold/70 mb-1 uppercase tracking-wider">備考</h3>
+                            <p className="text-sm text-gold-light/80 bg-white/5 p-3 rounded-lg border border-white/5 leading-relaxed whitespace-pre-wrap">
+                                {store.notes}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Meta */}
                     <div className="flex justify-between text-[10px] text-neutral-500 mb-5 pb-3 border-b border-white/10">
                         <span>情報ソース: {store.source_type === 'initial' ? '初期登録' : 'コミュニティ投稿'}</span>
