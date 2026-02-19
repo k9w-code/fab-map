@@ -102,18 +102,22 @@ const AdminView = ({ onBack, clickedLocation }) => {
 
     const fetchData = async () => {
         setIsLoading(true)
-        const { data, error } = await supabase
-            .from('stores')
-            .select('*')
-            .eq('status', activeTab)
-            .order('created_at', { ascending: false })
+        try {
+            const { data, error } = await supabase
+                .from('stores')
+                .select('*')
+                .eq('status', activeTab)
+                .order('created_at', { ascending: false })
 
-        if (error) {
-            console.error('Error fetching stores:', error)
-        } else {
+            if (error) throw error
             setStores(data || [])
+        } catch (err) {
+            console.error('Error fetching admin data:', err)
+            // RLS error often comes as an empty array but if it's a real error, show it
+            alert('データの取得に失敗しました: ' + (err.message || 'Unknown error'))
+        } finally {
+            setIsLoading(false)
         }
-        setIsLoading(false)
     }
 
     useEffect(() => {

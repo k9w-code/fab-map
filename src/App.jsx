@@ -210,7 +210,6 @@ function App() {
                 />
             </ErrorBoundary>
         )
-        )
     }
 
     return (
