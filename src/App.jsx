@@ -200,13 +200,16 @@ function App() {
     // Admin view
     if (isAdminView) {
         return (
-            <AdminView
-                onBack={() => {
-                    window.location.hash = ''
-                    fetchStores()
-                }}
-                clickedLocation={clickedLocation}
-            />
+            <ErrorBoundary>
+                <AdminView
+                    onBack={() => {
+                        window.location.hash = ''
+                        fetchStores()
+                    }}
+                    clickedLocation={clickedLocation}
+                />
+            </ErrorBoundary>
+        )
         )
     }
 
