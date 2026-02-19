@@ -12,6 +12,7 @@ const AdminView = ({ onBack, clickedLocation }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [editingStore, setEditingStore] = useState(null)
     const [isLoadingAuth, setIsLoadingAuth] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [itemToDelete, setItemToDelete] = useState(null)
